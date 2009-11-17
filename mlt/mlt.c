@@ -7,7 +7,7 @@
 
 int main (void)
 {
-   Image img;  
+   Image img;
    Image *res;
    int res_cnt, i;
    char buf[1024];
@@ -15,11 +15,11 @@ int main (void)
 
    segment(&res, &res_cnt, &img);
 
-   for (i = 0; i < res_cnt && i < 10; ++i)
+   for (i = 0; i < res_cnt; ++i)
    {
-      sprintf(buf, "../img/frag/test_%i.raw", i);
+      sprintf(buf, "../img/frag/test_%02i.raw", i);
       image_save(buf, &res[i]);
-   }  
+   }
    ShellExecuteA(NULL, "open", "../ggg2png/bin/Debug/ggg2png.exe", "../img/frag/", NULL, SW_SHOWNORMAL);
 
    return 0;

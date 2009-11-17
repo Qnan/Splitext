@@ -25,7 +25,7 @@ int image_dispose (Image* img)
 int image_load (Image* img, const char* filename)
 {
    FILE* f = fopen(filename, "rb");
-   int x, y, width, height;   
+   int x, y, width, height;
    fread(&width, sizeof(int), 1, f);
    fread(&height, sizeof(int), 1, f);
    image_init(img, width, height);
@@ -34,9 +34,9 @@ int image_load (Image* img, const char* filename)
    fread(&img->ydpi, sizeof(int), 1, f);
    for (y = 0; y < img->height; ++y)
       for (x = 0; x < img->width; ++x)
-         fread(&img->data[y * img->width + x], sizeof(byte), 1, f);         
+         fread(&img->data[y * img->width + x], sizeof(byte), 1, f);
    return 0;
-}      
+}
 
 int image_save (const char* filename, Image* img)
 {
@@ -48,4 +48,4 @@ int image_save (const char* filename, Image* img)
    fwrite(img->data, sizeof(byte), img->width * img->height, f);
    fclose(f);
    return 0;
-}      
+}
