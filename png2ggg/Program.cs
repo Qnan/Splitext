@@ -21,8 +21,8 @@ namespace png2ggg
 
          for (int y = 0; y < img.Height; ++y)
             for (int x = 0; x < img.Width; ++x)
-               bw.Write((Byte)Math.Min(Math.Max(img.GetPixel(x, y).GetBrightness()*255,0),255));
+               bw.Write((int)Math.Min(Math.Max(img.GetPixel(x, y).GetBrightness()*255,0),255));
          bw.Close();
-      }
+      }                 
    }
 }

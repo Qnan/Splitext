@@ -227,8 +227,7 @@ Block* block_split_list (Block* block)
       block_sink_by_sigma(&head, b);
       if (block_calc_between_class_variance(&head) > variance_treshold)
          break;
-   }
-
+   }               
 
    return head.next;
 }

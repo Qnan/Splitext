@@ -18,7 +18,7 @@
 	</Platforms>
 	<ToolFiles>
 		<ToolFile
-			RelativePath="../cuda-common/Cuda.rules"
+			RelativePath="..\cuda-common\Cuda.rules"
 		/>
 	</ToolFiles>
 	<Configurations>
@@ -372,6 +372,7 @@
 			/>
 			<Tool
 				Name="CUDA Build Rule"
+				Arch="13"
 			/>
 			<Tool
 				Name="VCXMLDataGeneratorTool"
@@ -386,7 +387,7 @@
 				Name="VCCLCompilerTool"
 				Optimization="0"
 				AdditionalIncludeDirectories="$(CUDA_INC_PATH);./;../cuda-common/inc"
-				PreprocessorDefinitions="WIN32;_DEBUG;_CONSOLE"
+				PreprocessorDefinitions="WIN32;_DEBUG;_CONSOLE;_CRT_SECURE_NO_WARNINGS"
 				MinimalRebuild="true"
 				BasicRuntimeChecks="3"
 				RuntimeLibrary="1"
@@ -541,6 +542,7 @@
 			/>
 			<Tool
 				Name="CUDA Build Rule"
+				Arch="13"
 			/>
 			<Tool
 				Name="VCXMLDataGeneratorTool"
@@ -555,7 +557,7 @@
 				Name="VCCLCompilerTool"
 				Optimization="0"
 				AdditionalIncludeDirectories="$(CUDA_INC_PATH);./;../cuda-common/inc"
-				PreprocessorDefinitions="WIN32;_CONSOLE"
+				PreprocessorDefinitions="WIN32;_CONSOLE;_CRT_SECURE_NO_WARNINGS"
 				RuntimeLibrary="0"
 				UsePrecompiledHeader="0"
 				WarningLevel="3"
@@ -753,6 +755,7 @@
 						Name="CUDA Build Rule"
 						Include="$(CUDA_INC_PATH);../cuda-common/inc"
 						Debug="true"
+						Arch="13"
 						Emulation="true"
 						Optimization="0"
 						AddedDependencies="cust_kernel.cu"
@@ -796,8 +799,76 @@
 				</FileConfiguration>
 			</File>
 			<File
-				RelativePath=".\cust_gold.cpp"
+				RelativePath=".\cust_impl.cpp"
 				>
+				<FileConfiguration
+					Name="Debug|Win32"
+					ExcludedFromBuild="true"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Release|Win32"
+					ExcludedFromBuild="true"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="EmuDebug|Win32"
+					ExcludedFromBuild="true"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="EmuRelease|Win32"
+					ExcludedFromBuild="true"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+					/>
+				</FileConfiguration>
+			</File>
+			<File
+				RelativePath=".\cust_kernel.cpp"
+				>
+				<FileConfiguration
+					Name="Debug|Win32"
+					ExcludedFromBuild="true"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Release|Win32"
+					ExcludedFromBuild="true"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="EmuDebug|Win32"
+					ExcludedFromBuild="true"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="EmuRelease|Win32"
+					ExcludedFromBuild="true"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+					/>
+				</FileConfiguration>
 			</File>
 			<File
 				RelativePath=".\cust_kernel.cu"
@@ -867,12 +938,20 @@
 					/>
 				</FileConfiguration>
 			</File>
+			<File
+				RelativePath="..\image\image.cpp"
+				>
+			</File>
 		</Filter>
 		<Filter
 			Name="inc"
 			>
 			<File
 				RelativePath=".\cust.h"
+				>
+			</File>
+			<File
+				RelativePath="..\image\image.h"
 				>
 			</File>
 		</Filter>

@@ -24,13 +24,15 @@ namespace ggg2png
             int xdpi = br.ReadInt32();
             int ydpi = br.ReadInt32();
             Bitmap bmp = new Bitmap(width, height);
+            //List<int> bb = new List<int>();
             for (int y = 0; y < height; ++y)
                for (int x = 0; x < width; ++x)
                {
-                  int b = (int)br.ReadByte();
-                  bmp.SetPixel(x, y, Color.FromArgb(b, b, b));
+                  int b = (int)(br.ReadUInt32() & 0xFFFFFFu);
+                  //bb.Add(b);
+                  bmp.SetPixel(x, y, Color.FromArgb((b >> 16) & 0xFF, (b >> 8) & 0xFF, b & 0xFF));
                }
-            br.Close();
+            //br.Close();
             bmp.Save(dstname, System.Drawing.Imaging.ImageFormat.Png);
          }
       }
