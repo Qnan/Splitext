@@ -2,159 +2,131 @@
 #include "segment.h"
 #include "malloc.h"
 #include "memory.h"
+#include "math.h"
 
 static const int block_size = 120;
-static const float separability_treshold = 0.92f;
+static const float separability_treshold = 0.9f; // 0.92f
+static const float homogeniety_separability_treshold = 0.6f;
+static const float homogeniety_variance_treshold = 11.0f;
+static const float mountine_exp = 5.4f;
+static const float mountine_ratio_treshold = 0.45f;
 
 float fsqr(float val)
 {
    return val * val;
 }
 
+#define MAX_LAYERS 16
+#define MAX_HIST 256
+
+typedef struct tagLayer{
+   int t; // lower treshold border
+   unsigned long v0; // total intensity
+   unsigned long v1; // sum of v * h[v]
+   unsigned long v2; // sum of v * v * h[v]
+   float avg;
+   float stddev;
+
+   int q;
+   float mountine;
+}Layer;
+
 typedef struct tagBlock{
-   int *data;
-   int *histogram;
+   Layer layers[MAX_LAYERS];
+   int histogram[MAX_HIST];
+   int layer_count;
    int bx;
-   int by;
-   int t0;
-   int t1;
-   int total_intensity;
-   int object_pixel_count;
-   float average_intensity;
-   float overall_average_intensity;
-   float cumulative_probability;
-   float standard_deviation;
-   float between_class_variance_item;
-   struct tagBlock *next, *prev;
+   int by; 
+   float average;
+   float variance;
 }Block;
 
-Block* block_alloc ()
+int layer_calc_props (Block* block, int layer_id)
 {
-   Block* b = (Block*)malloc(sizeof(Block));
-   b->data = NULL;
-   b->histogram = NULL;
-   return b;
-}
+   int v, t0, t1;
+   Layer* layer = block->layers + layer_id;
+   
+   t0 = layer->t;
+   t1 = MAX_HIST;
+   if (layer_id < block->layer_count - 1)
+      t1 = block->layers[layer_id + 1].t;
 
-int block_dispose (Block* block)
-{
-   if (block->data != NULL)
-   {
-      free(block->data);
-      block->data = NULL;
-   }
+   layer->v0 = layer->v1 = layer->v2 = 0;
+   for (v = t0; v < t1; ++v)
+   {                                                 
+      layer->v0 += block->histogram[v];
+      layer->v1 += v * block->histogram[v];
+      layer->v2 += v * v * block->histogram[v];
+   }  
+   layer->avg = (float)layer->v1 / layer->v0;
+   layer->stddev = (float)layer->v2 / layer->v0 - layer->avg * layer->avg;
    return 0;
 }
 
-int block_free (Block* b)
+void block_prepare (Block* block, Image* img, int bx, int by)
 {
-   block_dispose(b);
-   free(b);
-   return 0;
-}
+   int x, y, xi, yi;
+   memset(block->histogram, 0, MAX_HIST * sizeof(int));
 
-int block_init (Block* block)
-{
-   block->data = (int*)malloc(block_size * block_size * sizeof(int));
-   if (!block->data)
-      return 1;
-   memset(block->data, 0xFF, block_size * block_size * sizeof(int));
-   block->histogram = (int*)malloc(256 * sizeof(int));
-   if (!block->histogram)
-   {
-      free(block->data);
-      return 1;
-   }
-   block->t0 = 0;
-   block->t1 = 256;
-   block->next = block->prev = 0;
-   return 0;
-}
-
-Block* block_clone (Block* src)
-{
-   Block* b = block_alloc();
-   if (!b)
-      return NULL;
-   *b = *src;
-   if (block_init(b))
-   {
-      block_free(b);
-      return NULL;
-   }
-   return b;
-}
-
-int block_calc_props (Block* block)
-{
-   int x,y,v;
-   memset(block->histogram, 0, 256 * sizeof(int));
-
+   block->bx = bx;
+   block->by = by;
    for (y = 0; y < block_size; ++y)
-   {
       for (x = 0; x < block_size; ++x)
       {
-         v = block->data[y * block_size + x];
-         if (v >= 0)
-            block->histogram[v]++;
+         xi = bx * block_size + x;
+         yi = by * block_size + y;
+         if (xi < img->width && yi < img->height)
+            block->histogram[img->data[yi * img->width + xi]]++;
       }
-   }
 
-   block->total_intensity = 0;
-   block->object_pixel_count = 0;
-   block->standard_deviation = 0;
-   for (v = 0; v < 256; ++v)
+   block->layer_count = 1;
+   block->layers[0].t = 0;
+   layer_calc_props(block, 0);
+   block->average = block->layers[0].avg;
+   block->variance = block->layers[0].stddev;
+}
+
+float block_calc_between_class_variance (Block* block)
+{
+   int i;
+   Layer *layer;
+   float bcv = 0, d;
+   for (i = 0; i < block->layer_count; ++i)
    {
-      block->total_intensity += v * block->histogram[v];
-      block->object_pixel_count += block->histogram[v];
-      block->standard_deviation += v * v * block->histogram[v];
+      layer = block->layers + i;
+      d = layer->avg - block->average;
+      bcv += d * d * layer->v0 / (block_size * block_size);
    }
-   block->average_intensity = ((float)block->total_intensity) / block->object_pixel_count;
-   block->cumulative_probability = ((float)block->object_pixel_count) / (block_size * block_size);
-   block->standard_deviation = block->standard_deviation / block->object_pixel_count - block->average_intensity * block->average_intensity;
-   return 0;
+   return bcv;
 }
 
-float block_calc_total_variance (Block* block)
+int block_find_treshold (Block* block, int layer_id, float *pbcv)
 {
-   int v;
-   float total_variance = 0;
-   for (v = 0; v < 256; ++v)
-      total_variance += fsqr(v - block->average_intensity) * block->histogram[v] / (block_size * block_size);
-   return total_variance;
-}
-
-float block_calc_between_class_variance (Block* list)
-{
-   float between_class_variance = 0;
-   while ((list = list->next) != NULL)
-      between_class_variance += fsqr(list->average_intensity - list->overall_average_intensity) * list->cumulative_probability;
-   return between_class_variance;
-}
-
-int block_find_treshold (Block* block)
-{
-   int t, t_best = -1;
-   float max_variance = 0;
-   float between_class_variance;
+   int t, t_best = -1, t0, t1;
+   float max_variance = 0, bcv, d1, d2;
    int total_intensity_0, total_intensity_1, object_pixels_0, object_pixels_1;
+   Layer* layer = block->layers + layer_id;
+
+   t0 = layer->t;
+   t1 = MAX_HIST;
+   if (layer_id < block->layer_count - 1)
+      t1 = block->layers[layer_id + 1].t;
 
    total_intensity_0 = 0;
-   total_intensity_1 = block->total_intensity;
+   total_intensity_1 = layer->v1;
    object_pixels_0 = 0;
-   object_pixels_1 = block->object_pixel_count;
+   object_pixels_1 = layer->v0;
 
-   for (t = block->t0; t < block->t1; ++t)
+   for (t = t0; t < t1; ++t)
    {
       if (object_pixels_0 > 0 && object_pixels_1 > 0)
       {
-         between_class_variance =
-            (fsqr((float)total_intensity_0 / object_pixels_0 - block->average_intensity) * object_pixels_0 +
-            fsqr((float)total_intensity_1 / object_pixels_1 - block->average_intensity) * object_pixels_1) /
-            block->object_pixel_count;
-         if (between_class_variance > max_variance)
+         d1 = (float)total_intensity_0 / object_pixels_0 - block->average;
+         d2 = (float)total_intensity_1 / object_pixels_1 - block->average;
+         bcv = (d1 * d1 * object_pixels_0 + d2 * d2 * object_pixels_1) / layer->v0;
+         if (bcv > max_variance)
          {
-            max_variance = between_class_variance;
+            max_variance = bcv;
             t_best = t;
          }
       }
@@ -163,141 +135,191 @@ int block_find_treshold (Block* block)
       object_pixels_0 += block->histogram[t];
       object_pixels_1 -= block->histogram[t];
    }
+   if (pbcv != 0)
+      *pbcv = max_variance;
 
    return t_best;
 }
 
-Block* block_split (Block* source_block)
-{
-   Block* new_block = NULL;
-   int x, y, v, t = block_find_treshold(source_block);
+int layer_split (Block* block, int layer_id, int t, float* pbcv)
+{     
+   int i;
+   float bcv = 0;
 
+   if (block->layer_count >= MAX_LAYERS)
+      return 1;
+
+   if (t < 0)       
+      t = block_find_treshold(block, layer_id, &bcv);
    if (t < 0)
-      return NULL;
+      return 1;
 
-   new_block = block_clone(source_block);
-   if (!new_block)
-      return NULL;
+   for (i = block->layer_count - 1; i > layer_id; --i)
+      block->layers[i + 1] = block->layers[i];
 
-   new_block->t1 = source_block->t1;
-   new_block->t0 = source_block->t1 = t;
+   block->layer_count++;
+   block->layers[layer_id + 1].t = t;
 
-   for (y = 0; y < block_size; ++y)
-   {
-      for (x = 0; x < block_size; ++x)
-      {
-         v = source_block->data[y * block_size + x];
-         if (v >= t)
-         {
-            new_block->data[y * block_size + x] = v;
-            source_block->data[y * block_size + x] = -1;
-         }
-      }
-   }
-
-   block_calc_props(new_block);
-   block_calc_props(source_block);
-   return new_block;
-}
-
-int block_sink_by_sigma (Block* head, Block* b)
-{
-   while (head->next != NULL && head->next->standard_deviation > b->standard_deviation)
-      head = head->next;
-   b->next = head->next;
-   head->next = b;
+   layer_calc_props(block, layer_id);
+   layer_calc_props(block, layer_id + 1);
+   if (pbcv != NULL)
+      *pbcv = bcv;
    return 0;
 }
 
-Block* block_split_list (Block* block)
+int block_get_max_sigma_layer (Block* block)
 {
-   Block *b = NULL, *c = NULL;
-   Block head;
-   float variance_treshold;
-   head.next = block;
-
-   block->overall_average_intensity = block->average_intensity;
-   variance_treshold = block_calc_total_variance(block) * separability_treshold;
-
-   while ((b = block_split(head.next)) != 0)
+   int i, i0 = -1;
+   float max_sigma = 0, sigma;
+   for (i = 0; i < block->layer_count; ++i)
    {
-      c = head.next;
-      head.next = c->next;
-      block_sink_by_sigma(&head, c);
-      block_sink_by_sigma(&head, b);
-      if (block_calc_between_class_variance(&head) > variance_treshold)
-         break;
-   }               
-
-   return head.next;
+      sigma = block->layers[i].stddev * block->layers[i].v0 / block_size / block_size;
+      if (sigma > max_sigma)
+      {
+         max_sigma = sigma;
+         i0 = i;
+      }
+   }   
+   return i0;
 }
 
-int block_to_image (Image* img, Block* block)
+int block_split (Block* block)
 {
-   int x,y;
+   int v, t;
+   float variance_treshold, bcv;//, bcv1;
+
+   variance_treshold = block->variance * separability_treshold;
+   t = block_find_treshold(block, 0, &bcv);
+
+   if (bcv < block->variance * homogeniety_separability_treshold && block->variance < homogeniety_variance_treshold)
+      return 0;
+   layer_split(block, 0, t, 0);      
+   while (1)
+   {
+      v = block_get_max_sigma_layer(block);
+      if (layer_split(block, v, -1, &bcv))
+         break;
+      //bcv1 = block_calc_between_class_variance(block);
+      if (bcv > variance_treshold || block->layer_count >= MAX_LAYERS)
+         break;
+   }
+
+   return 0;
+}
+
+int block_to_image (Image* img, Block* block, int layer_id, Image* source_image)
+{
+   int x,y,t0,t1,v;
    image_init(img, block_size, block_size);
 
+   t0 = block->layers[layer_id].t;
+   t1 = MAX_HIST;
+   if (layer_id < block->layer_count - 1)
+      t1 = block->layers[layer_id + 1].t;
+
    for (y = 0; y < block_size; ++y)
       for (x = 0; x < block_size; ++x)
-         img->data[y * block_size + x] = block->data[y * block_size + x];
+      {           
+         v = source_image->data[(block->by * block_size + y) * source_image->width + block->bx *  block_size + x];
+         if (v >= t0 && v < t1)
+            img->data[y * block_size + x] = v;
+         else
+            img->data[y * block_size + x] = 0xFF;
+      }
 
    return 0;
 }
 
-int block_select (Block* block, Image* img, int bx, int by)
+int layer_encode (int bx, int by, int nx, int k)
+{                       
+   return (by * nx + bx) * MAX_LAYERS + k;
+}
+
+Layer* layer_get (Block* blocks, int code, int nx)
+{                       
+   int k, bx, by;
+
+   k = code % MAX_LAYERS;
+   code /= MAX_LAYERS;
+   bx = code % nx;
+   by = code / nx;
+
+   return &blocks[by * nx + bx].layers[k];
+}
+
+void layer_calc_mountine (Layer** pool, int layer_count, Layer* layer)
 {
-   int x, y, xs, ys;
-   for (y = 0; y < block_size; ++y)
-   {
-      for (x = 0; x < block_size; ++x)
-      {
-         ys = by * block_size + y;
-         xs = bx* block_size + x;
-         if (xs < img->width && ys < img->height)
-            block->data[y * block_size + x] = img->data[ys * img->width + xs];
-         else
-            block->data[y * block_size + x] = -1;
-      }
-   }
-   block->bx = bx;
-   block->by = by;
-   return 0;
+   int i;
+   float mountine;
+
+   mountine = 0;
+   for (i = 0; i < layer_count; ++i)
+      if (pool[i] != layer)
+         mountine += expf(-mountine_exp * fabs(pool[i]->avg - layer->avg));
 }
 
 int segment(Image **res, int* res_cnt, Image *img)
 {
-   int bx, by, nx, ny, cnt = 0, maxCnt = 20;
-   Block *block = NULL, *list = NULL, *tmp = NULL;
+   int bx, by, nx, ny, cnt = 0, maxCnt = 50, i, i0, k, layer_count;
+   Layer **pool;
+   Block *blocks, *block;   
+   float first_mountine;
 
    nx = (img->width + block_size - 1) / block_size;
    ny = (img->height + block_size - 1) / block_size;
 
+   blocks = malloc(nx * ny * sizeof(Block));
+
    *res_cnt = maxCnt;//nx * ny;
    *res = malloc(*res_cnt * sizeof(Image));
 
+   layer_count = 0;
    for (by = 0; by < ny; ++by)
    {
       for (bx = 0; bx < nx; ++bx)
-      {
-         block = block_alloc();
-         if (block_init(block))
-         {
-            block_free(block);
-            return 1;
-         }
-         block_select(block, img, bx, by);
-         block_calc_props(block);
-         list = block_split_list(block);
-         for (;list != NULL;)
-         {
+      {           
+         block = blocks + by * nx + bx;
+         block_prepare(block, img, bx, by);
+         block_split(block);
+         layer_count += block->layer_count;
+         for (i = 0; i < block->layer_count; ++i)
             if (cnt < maxCnt)
-               block_to_image(*res + (cnt++), list);
-            tmp = list->next;
-            block_free(list);
-            list = tmp;
-         }
+               block_to_image(*res + (cnt++), block, i, img);
       }
    }
+   *res_cnt = cnt;//nx * ny;
+
+
+   pool = (Layer**)malloc(layer_count * sizeof(Layer*));
+
+   // fill in the pool
+   for (i = 0, by = 0; by < ny; ++by)
+      for (bx = 0; bx < nx; ++bx)
+         for (k = 0; k < block->layer_count; ++k)
+            pool[i++] = blocks[by * nx + bx].layers + k;
+
+   first_mountine = 0;
+   for (k = 0; k == 0 || pool[i0]->mountine > first_mountine * mountine_ratio_treshold; ++k)
+   {
+      // find mountine values
+      for (i = 0; i < layer_count; ++i)
+         layer_calc_mountine(pool, layer_count, pool[i]);
+
+      // find maximum
+      i0 = 0;
+      for (i = 0; i < layer_count; ++i)
+         if (pool[i]->mountine > pool[i0]->mountine)
+            i0 = i;
+
+      if (k == 0)
+         first_mountine = pool[i0]->mountine;
+
+      // matching phase
+   }
+
+   // collect remaining pieces
+
 
    return 0;
 }
+   

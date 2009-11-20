@@ -1,12 +1,14 @@
 #include "stdio.h"
 #include "malloc.h"
 #include "image.h"
+#include "memory.h"
 
 int image_init (Image* img, int width, int height)
 {
    img->width = width;
    img->height = height;
    img->data = (int*)malloc(width * height * sizeof(int));
+   memset(img->data, 0xFF, width * height * sizeof(int));
    if (!img->data)
       return 1;
    return 0;
