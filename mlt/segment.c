@@ -37,6 +37,7 @@ typedef struct tagBlock{
    int layer_count;
    int bx;
    int by; 
+   int max_plane;
    float average;
    float variance;
 }Block;
@@ -60,6 +61,7 @@ int layer_calc_props (Block* block, int layer_id)
    }  
    layer->avg = (float)layer->v1 / layer->v0;
    layer->stddev = (float)layer->v2 / layer->v0 - layer->avg * layer->avg;
+   layer->q = 0;
    return 0;
 }
 
@@ -70,6 +72,7 @@ void block_prepare (Block* block, Image* img, int bx, int by)
 
    block->bx = bx;
    block->by = by;
+   block->max_plane = 0;
    for (y = 0; y < block_size; ++y)
       for (x = 0; x < block_size; ++x)
       {
@@ -251,16 +254,209 @@ void layer_calc_mountine (Layer** pool, int layer_count, Layer* layer)
 {
    int i;
    float mountine;
-
+                                                       
    mountine = 0;
    for (i = 0; i < layer_count; ++i)
-      if (pool[i] != layer)
-         mountine += expf(-mountine_exp * fabs(pool[i]->avg - layer->avg));
+      if (pool[i] != layer && !pool[i]->q)
+         mountine += expf(-/*mountine_exp*/ fabs(pool[i]->avg - layer->avg));
+   layer->mountine = mountine;
+}                                                       
+
+void block_assign_plane(Image* image, Block* blocks, int bx, int by, int nx, int ny, int q, int* changed)
+{
+   int i, j, x, y, c1, c2, sx, sy, nsc, diff, x1, x2, y1, y2, j0;
+   float side_measure, min_side_measure;
+   Block *block = blocks + by * nx + bx, *block2;
+   Layer *layer1, *layer2;
+
+   if (block->max_plane >= q)
+      return;
+
+   min_side_measure = -1;
+   block2 = blocks + by * nx + bx - 1;
+   if (bx > 0 && block2->max_plane == q)
+   {
+      sx = bx * block_size;
+      sy = by * block_size;
+      x1 = sx;
+      x2 = sx - 1;
+      y2 = block_size;
+      if (y2 > image->height - sy)
+         y2 = image->height - sy;
+      nsc = 0;
+      diff = 0;
+      for (i = 0; i < block2->layer_count && block2->layers[i].q != q; ++i)
+         ;
+
+      layer2 = block2->layers + i;
+      for (j = 0; j < block->layer_count; ++j)
+      {
+         layer1 = block->layers + j;
+         if (layer1->q)
+            continue;
+         for (y = 0; y < y2; ++y)
+         {
+            c1 = image->data[(sy + y) * image->width + x1];
+            c2 = image->data[(sy + y) * image->width + x2];
+            if (c1 >= layer1->t && (j == block->layer_count - 1 || c1 < block->layers[j + 1].t) &&
+               c2 >= layer2->t && (i == block2->layer_count - 1 || c2 < block2->layers[i + 1].t))
+            {
+               diff += abs(c1 - c2);
+               nsc++;
+            }                  
+         }
+         if (nsc > 0)
+         {
+            side_measure = (float)diff / nsc;
+            if (min_side_measure < 0 || side_measure < min_side_measure)
+            {
+               j0 = j;
+               min_side_measure = side_measure;
+            }
+         }
+      }
+   }
+
+   block2 = blocks + by * nx + bx + 1;
+   if (bx < nx - 1 && block2->max_plane == q)
+   {
+      sx = (bx + 1) * block_size;
+      sy = by * block_size;
+      x1 = sx - 1;
+      x2 = sx;
+      y2 = block_size;
+      if (y2 > image->height - sy)
+         y2 = image->height - sy;
+      nsc = 0;
+      diff = 0;
+      for (i = 0; i < block2->layer_count && block2->layers[i].q != q; ++i)
+         ;
+      layer2 = block2->layers + i;
+      for (j = 0; j < block->layer_count; ++j)
+      {
+         layer1 = block->layers + j;
+         if (layer1->q)
+            continue;
+         for (y = 0; y < y2; ++y)
+         {
+            c1 = image->data[(sy + y) * image->width + x1];
+            c2 = image->data[(sy + y) * image->width + x2];
+            if (c1 >= layer1->t && (j == block->layer_count - 1 || c1 < block->layers[j + 1].t) &&
+               c2 >= layer2->t && (i == block2->layer_count - 1 || c2 < block2->layers[i + 1].t))
+            {
+               diff += abs(c1 - c2);
+               nsc++;
+            }                  
+         }
+         if (nsc > 0)
+         {
+            side_measure = (float)diff / nsc;
+            if (min_side_measure < 0 || side_measure < min_side_measure)
+            {
+               j0 = j;
+               min_side_measure = side_measure;
+            }
+         }
+      }
+   }
+
+   block2 = blocks + (by - 1) * nx + bx;
+   if (by > 0 && block2->max_plane == q)
+   {
+      sx = bx * block_size;
+      sy = by * block_size;
+      y1 = sy;
+      y2 = sy - 1;
+      x2 = block_size;
+      if (x2 > image->width - sx)
+         x2 = image->width - sx;
+      nsc = 0;
+      diff = 0;
+      for (i = 0; i < block2->layer_count && block2->layers[i].q != q; ++i)
+         ;
+      layer2 = block2->layers + i;
+      for (j = 0; j < block->layer_count; ++j)
+      {
+         layer1 = block->layers + j;
+         if (layer1->q)
+            continue;
+         for (x = 0; x < x2; ++x)
+         {
+            c1 = image->data[y1 * image->width + sx + x];
+            c2 = image->data[y2 * image->width + sx + x];
+            if (c1 >= layer1->t && (j == block->layer_count - 1 || c1 < block->layers[j + 1].t) &&
+               c2 >= layer2->t && (i == block2->layer_count - 1 || c2 < block2->layers[i + 1].t))
+            {
+               diff += abs(c1 - c2);
+               nsc++;
+            }                  
+         }
+         if (nsc > 0)
+         {
+            side_measure = (float)diff / nsc;
+            if (min_side_measure < 0 || side_measure < min_side_measure)
+            {
+               j0 = j;
+               min_side_measure = side_measure;
+            }
+         }
+      }
+   }
+
+   block2 = blocks + (by + 1) * nx + bx;
+   if (by < ny - 1 && block2->max_plane == q)
+   {
+      sx = bx * block_size;
+      sy = (by + 1) * block_size;
+      y1 = sy - 1;
+      y2 = sy;
+      x2 = block_size;
+      if (x2 > image->width - sx)
+         x2 = image->width - sx;
+      nsc = 0;
+      diff = 0;
+      for (i = 0; i < block2->layer_count && block2->layers[i].q != q; ++i)
+         ;
+      layer2 = block2->layers + i;
+      for (j = 0; j < block->layer_count; ++j)
+      {
+         layer1 = block->layers + j;
+         if (layer1->q)
+            continue;
+         for (x = 0; x < x2; ++x)
+         {
+            c1 = image->data[y1 * image->width + sx + x];
+            c2 = image->data[y2 * image->width + sx + x];
+            if (c1 >= layer1->t && (j == block->layer_count - 1 || c1 < block->layers[j + 1].t) &&
+               c2 >= layer2->t && (i == block2->layer_count - 1 || c2 < block2->layers[i + 1].t))
+            {
+               diff += abs(c1 - c2);
+               nsc++;
+            }                  
+         }
+         if (nsc > 0)
+         {
+            side_measure = (float)diff / nsc;
+            if (min_side_measure < 0 || side_measure < min_side_measure)
+            {
+               j0 = j;
+               min_side_measure = side_measure;
+            }
+         }
+      }
+   }
+
+   if (min_side_measure >= 0 && min_side_measure < 1.5)
+   {              
+      block->max_plane = block->layers[j0].q = q;
+      *changed = 1;
+   }
 }
+
 
 int segment(Image **res, int* res_cnt, Image *img)
 {
-   int bx, by, nx, ny, cnt = 0, maxCnt = 50, i, i0, k, layer_count;
+   int bx, by, nx, ny, cnt = 0, maxCnt = 50, i, i0, k, layer_count, q, changed;
    Layer **pool;
    Block *blocks, *block;   
    float first_mountine;
@@ -289,7 +485,6 @@ int segment(Image **res, int* res_cnt, Image *img)
    }
    *res_cnt = cnt;//nx * ny;
 
-
    pool = (Layer**)malloc(layer_count * sizeof(Layer*));
 
    // fill in the pool
@@ -299,6 +494,7 @@ int segment(Image **res, int* res_cnt, Image *img)
             pool[i++] = blocks[by * nx + bx].layers + k;
 
    first_mountine = 0;
+   q = 1;
    for (k = 0; k == 0 || pool[i0]->mountine > first_mountine * mountine_ratio_treshold; ++k)
    {
       // find mountine values
@@ -306,15 +502,27 @@ int segment(Image **res, int* res_cnt, Image *img)
          layer_calc_mountine(pool, layer_count, pool[i]);
 
       // find maximum
-      i0 = 0;
+      i0 = -1;
       for (i = 0; i < layer_count; ++i)
-         if (pool[i]->mountine > pool[i0]->mountine)
+         if (!pool[i]->q && (i0 < 0 || pool[i]->mountine > pool[i0]->mountine))
             i0 = i;
+      if (i0 < 0)
+         break;
 
       if (k == 0)
          first_mountine = pool[i0]->mountine;
 
+      pool[i0]->q = q;
+
       // matching phase
+
+      do {
+         changed = 0;
+         for (by = 0; by < ny; ++by)
+            for (bx = 0; bx < nx; ++bx)
+               block_assign_plane(img, blocks, bx, by, nx, ny, q, &changed);
+      } while (changed);
+      q++;
    }
 
    // collect remaining pieces
