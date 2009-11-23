@@ -42,6 +42,11 @@ typedef struct tagBlock{
    float variance;
 }Block;
 
+typedef struct tagPlane{
+	float average;
+	float variance;
+}Plane;
+
 int layer_calc_props (Block* block, int layer_id)
 {
    int v, t0, t1;
