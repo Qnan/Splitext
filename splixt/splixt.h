@@ -14,15 +14,44 @@
 
 // Thread block size
 #define BLOCK_SIZE 16
+#define MAX_LAYERS 16
+#define MAX_HIST 256
+#define REG_SIZE 128
+#define REG_SIZE_SQ (REG_SIZE*REG_SIZE)
 
-// Matrix dimensions
-// (chosen as multiples of the thread block size for simplicity)
-#define WA (3 * BLOCK_SIZE) // Matrix A width
-#define HA (5 * BLOCK_SIZE) // Matrix A height
-#define WB (8 * BLOCK_SIZE) // Matrix B width
-#define HB WA  // Matrix B height
-#define WC WB  // Matrix C width 
-#define HC HA  // Matrix C height
+#define separability_treshold 0.9f
+#define homogeniety_separability_treshold 0.6f
+#define homogeniety_variance_treshold 11.0f
+#define mountine_exp 5.4f
+#define mountine_ratio_treshold 0.45f
+
+typedef struct tagLayer{
+   int t; // lower treshold border
+   unsigned long v0; // total intensity
+   unsigned long v1; // sum of v * h[v]
+   unsigned long v2; // sum of v * v * h[v]
+   float avg;
+   float stddev;
+
+   int q;
+   float mountine;
+}Layer;
+
+typedef struct tagRegion{
+   Layer layers[MAX_LAYERS];
+   int hist[MAX_HIST];
+   int layer_count;
+   int rx;
+   int ry; 
+   int max_plane;
+   float average;
+   float variance;
+}Region;
+
+typedef struct tagPlane{
+	float average;
+	float variance;
+}Plane;
 
 #endif // _splixt_H_
 
