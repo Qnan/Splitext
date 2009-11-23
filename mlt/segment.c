@@ -48,9 +48,7 @@ int layer_calc_props (Block* block, int layer_id)
    Layer* layer = block->layers + layer_id;
    
    t0 = layer->t;
-   t1 = MAX_HIST;
-   if (layer_id < block->layer_count - 1)
-      t1 = block->layers[layer_id + 1].t;
+   t1 = layer_id < block->layer_count - 1 ? block->layers[layer_id + 1].t : MAX_HIST;
 
    layer->v0 = layer->v1 = layer->v2 = 0;
    for (v = t0; v < t1; ++v)
@@ -111,9 +109,7 @@ int block_find_treshold (Block* block, int layer_id, float *pbcv)
    Layer* layer = block->layers + layer_id;
 
    t0 = layer->t;
-   t1 = MAX_HIST;
-   if (layer_id < block->layer_count - 1)
-      t1 = block->layers[layer_id + 1].t;
+   t1 = layer_id < block->layer_count - 1 ? block->layers[layer_id + 1].t : MAX_HIST;
 
    total_intensity_0 = 0;
    total_intensity_1 = layer->v1;
@@ -216,9 +212,7 @@ int block_to_image (Image* img, Block* block, int layer_id, Image* source_image)
    image_init(img, block_size, block_size);
 
    t0 = block->layers[layer_id].t;
-   t1 = MAX_HIST;
-   if (layer_id < block->layer_count - 1)
-      t1 = block->layers[layer_id + 1].t;
+   t1 = layer_id < block->layer_count - 1 ? block->layers[layer_id + 1].t : MAX_HIST;
 
    for (y = 0; y < block_size; ++y)
       for (x = 0; x < block_size; ++x)
@@ -231,6 +225,40 @@ int block_to_image (Image* img, Block* block, int layer_id, Image* source_image)
       }
 
    return 0;
+}
+
+void plane_to_image (Image* img, Block* blocks, Image* simg, int q, int nx, int ny)
+{
+   int x, y, x1, y1, bx, by, t0, t1, v, i, pos;
+   Block *block;
+
+   image_init(img, simg->width, simg->height);
+
+   for (by = 0; by < ny; ++by)
+   {
+      y1 = by < ny - 1 ? block_size : simg->height - by * block_size;
+      for (bx = 0; bx < nx; ++bx)
+      {
+         block = blocks + by * nx + bx;
+         for (i = 0; i < block->layer_count && block->layers[i].q != q; ++i)
+            ;
+         if (i == block->layer_count)
+            continue;           
+
+         t0 = block->layers[i].t;
+         t1 = i < block->layer_count - 1 ? block->layers[i + 1].t : MAX_HIST;
+
+         x1 = bx < nx - 1 ? block_size : simg->width - bx * block_size;
+         for (y = 0; y < y1; ++y)
+            for (x = 0; x < x1; ++x)
+            {
+               pos = (by * block_size + y) * simg->width + bx * block_size + x;
+               v = simg->data[pos];
+               if (v >= t0 && v < t1)
+                  img->data[pos] = v / 2;
+            }
+      }
+   }
 }
 
 int layer_encode (int bx, int by, int nx, int k)
@@ -478,12 +506,8 @@ int segment(Image **res, int* res_cnt, Image *img)
          block_prepare(block, img, bx, by);
          block_split(block);
          layer_count += block->layer_count;
-         for (i = 0; i < block->layer_count; ++i)
-            if (cnt < maxCnt)
-               block_to_image(*res + (cnt++), block, i, img);
       }
    }
-   *res_cnt = cnt;//nx * ny;
 
    pool = (Layer**)malloc(layer_count * sizeof(Layer*));
 
@@ -521,9 +545,17 @@ int segment(Image **res, int* res_cnt, Image *img)
          for (by = 0; by < ny; ++by)
             for (bx = 0; bx < nx; ++bx)
                block_assign_plane(img, blocks, bx, by, nx, ny, q, &changed);
-      } while (changed);
+      } while (changed); 
+
+      if (cnt < maxCnt)
+         plane_to_image(*res + (cnt++), blocks, img, q, nx, ny);
+
       q++;
    }
+   //for (i = 0; i < block->layer_count; ++i)
+   //   if (cnt < maxCnt)
+   //      block_to_image(*res + (cnt++), block, i, img);
+   *res_cnt = cnt;//nx * ny;
 
    // collect remaining pieces
 
