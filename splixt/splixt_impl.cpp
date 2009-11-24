@@ -72,7 +72,8 @@ void runSplitText(int argc, char** argv)
       }
    }
    splixt_out_img_clear<<< grid, threads >>>(d_g);   
-   splixt_seed_show<<< grid, threads >>>(d_g, d_mnt, i);   
+   //splixt_seed_show<<< grid, threads >>>(d_g, d_mnt, i);   
+   splixt_planes_init<<< grid, threads >>>(d_g, d_mnt, i);   
 
    // check if kernel execution generated and error
    cutilCheckMsg("Kernel execution failed");

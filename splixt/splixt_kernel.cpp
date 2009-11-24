@@ -238,9 +238,9 @@ __global__ void splixt_calc_mountine_initial (Global *g, Mountine* m)
 
 __global__ void splixt_calc_mountine_update (Global *g, Mountine* m, Mountine* mold)
 {
-   Region *r, *r2, *rr;
+   Region *r, *rr;
    Layer *layer;
-   int rx, ry, nx, ny, x, y, i, j, j0;
+   int rx, ry, nx, ny, j, j0;
    float max;
 
    nx = g->nx;
@@ -285,12 +285,10 @@ __global__ void splixt_calc_mountine_update (Global *g, Mountine* m, Mountine* m
    }
 }
 
-__global__ void splixt_seed_show (Global *g, Mountine* m, int cnt)
+__global__ void splixt_planes_init (Global *g, Mountine* m, int cnt)
 {
-   Region *r, *r2, *rr;
-   Layer *layer;
-   int rx, ry, nx, ny, x, y, i, j, j0, xi, yi;
-   float max;
+   Region *r, *rr;
+   int rx, ry, nx, ny, x, y, i;
 
    nx = g->nx;
    ny = g->ny;
@@ -301,45 +299,48 @@ __global__ void splixt_seed_show (Global *g, Mountine* m, int cnt)
       return;
    r = rr + ry * nx + rx;
 
-   for (i = 0; i < cnt; ++i) {
-      if (m[i].rx == rx && m[i].ry == ry) {
-         layer = r->layers + m[i].lid;
-         for (x = 0; x < REG_SIZE; ++x) {
-            for (y = 0; y < REG_SIZE; ++y) {
-               xi = rx * REG_SIZE + x;
-               yi = ry * REG_SIZE + y;
-               if (xi < g->w && yi < g->h)
-                  g->out_img[yi * g->w + xi] = layer->avg;
-            }
-         }
-      }
-   }
+   for (i = 0; i < cnt; ++i)
+      if (m[i].rx == rx && m[i].ry == ry)
+         for (x = 0; x < REG_SIZE; ++x)
+            for (y = 0; y < REG_SIZE; ++y)
+               g->out_img[(ry * REG_SIZE + y) * g->w + rx * REG_SIZE + x] = r->layers[m[i].lid].avg;
+}                                 
+
+__global__ void splixt_seed_show (Global *g, Mountine* m, int cnt)
+{
+   Region *r, *rr;
+   int rx, ry, nx, ny, x, y, i;
+
+   nx = g->nx;
+   ny = g->ny;
+   rx = blockIdx.x * blockDim.x + threadIdx.x;
+   ry = blockIdx.y * blockDim.y + threadIdx.y;
+   rr = g->rr;
+   if (rx >= nx || ry >= ny)
+      return;
+   r = rr + ry * nx + rx;
+
+   for (i = 0; i < cnt; ++i)
+      if (m[i].rx == rx && m[i].ry == ry)
+         for (x = 0; x < REG_SIZE; ++x)
+            for (y = 0; y < REG_SIZE; ++y)
+               g->out_img[(ry * REG_SIZE + y) * g->w + rx * REG_SIZE + x] = r->layers[m[i].lid].avg;
 }
 
 __global__ void splixt_out_img_clear (Global *g)
 {
-   Region *r, *r2, *rr;
-   Layer *layer;
-   int rx, ry, nx, ny, x, y, i, j, j0, xi, yi;
-   float max;
+   int rx, ry, nx, ny, x, y;
 
    nx = g->nx;
    ny = g->ny;
    rx = blockIdx.x * blockDim.x + threadIdx.x;
    ry = blockIdx.y * blockDim.y + threadIdx.y;
-   rr = g->rr;
    if (rx >= nx || ry >= ny)
       return;
-   r = rr + ry * nx + rx;
 
-   for (x = 0; x < REG_SIZE; ++x) {
-      for (y = 0; y < REG_SIZE; ++y) {
-         xi = rx * REG_SIZE + x;
-         yi = ry * REG_SIZE + y;
-         if (xi < g->w && yi < g->h)
-            g->out_img[yi * g->w + xi] = 0xFF;
-      }
-   }
+   for (x = 0; x < REG_SIZE; ++x)
+      for (y = 0; y < REG_SIZE; ++y)
+         g->out_img[(ry * REG_SIZE + y) * g->w + rx * REG_SIZE + x] = 0xFF;
 }
 
 
