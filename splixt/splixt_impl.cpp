@@ -14,8 +14,8 @@ void runSplitText(int argc, char** argv)
       cudaSetDevice( cutGetMaxGflopsDeviceId() );
 
    Image img;
-   //image_load(&img, "../img/test.raw");
-   image_load(&img, "../img/test_big.raw");
+   image_load(&img, "../img/test.raw");
+   //image_load(&img, "../img/test_big.raw");
 
    // allocate host memory for matrices A and B
    unsigned int img_size = img.width * img.height;
@@ -52,7 +52,10 @@ void runSplitText(int argc, char** argv)
    dim3 threads(BLOCK_SIZE, BLOCK_SIZE);
    dim3 grid((h_g.nx + BLOCK_SIZE - 1) / BLOCK_SIZE, (h_g.ny + BLOCK_SIZE - 1) / BLOCK_SIZE);
 
-   // split regions into layers
+   // clear output image
+   splixt_out_img_clear<<< grid, threads >>>(d_g);   
+
+   // split regions into layers   
    splixt_region_split<<< grid, threads >>>(d_g);
 
    // find seeding layers
@@ -75,15 +78,19 @@ void runSplitText(int argc, char** argv)
       }
    }
    int nseeds = i;
-   splixt_out_img_clear<<< grid, threads >>>(d_g);   
-   splixt_seed_show<<< grid, threads >>>(d_g, d_mnt, nseeds);   
    splixt_planes_init<<< nseeds, 1 >>>(d_g, d_mnt); 
 
-   //int flag = 1;
-   //do {
-   //   flag = 0;
-   //   splixt_plane_construct<<< grid, threads >>>(d_g, &flag);
-   //} while (flag);
+   // extend planes
+   int flag = 1;
+   do {
+      flag = 0;
+      splixt_plane_construct<<< grid, threads >>>(d_g, &flag);
+   } while (flag);
+
+   //splixt_seed_show<<< grid, threads >>>(d_g, d_mnt, nseeds);   
+
+   splixt_plane_show<<< grid, threads >>>(d_g, nseeds);   
+
 
    // check if kernel execution generated and error
    cutilCheckMsg("Kernel execution failed");

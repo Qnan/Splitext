@@ -74,7 +74,7 @@ __global__ void splixt_region_split (Global *g)
    }
    layer->avg = (float)layer->v1 / layer->v0;
    layer->stddev = (float)layer->v2 / layer->v0 - layer->avg * layer->avg;
-   layer->q = 0;
+   layer->q = -1;
    r->average = r->layers[0].avg;
    r->variance = r->layers[0].stddev;
 
@@ -145,7 +145,7 @@ __global__ void splixt_region_split (Global *g)
       }
       layer->avg = (float)layer->v1 / layer->v0;
       layer->stddev = (float)layer->v2 / layer->v0 - layer->avg * layer->avg;
-      layer->q = 0;
+      layer->q = -1;
       lid++;
       layer = r->layers + lid;
       t0 = layer->t;
@@ -159,23 +159,23 @@ __global__ void splixt_region_split (Global *g)
       }
       layer->avg = (float)layer->v1 / layer->v0;
       layer->stddev = (float)layer->v2 / layer->v0 - layer->avg * layer->avg;
-      layer->q = 0;
+      layer->q = -1;
    } while (bcv < variance_treshold && r->layer_count < MAX_LAYERS);
                      
    // write split results
-   for (lid = 0; lid < r->layer_count; ++lid) {
-      t0 = r->layers[lid].t;
-      t1 = lid < r->layer_count - 1 ? r->layers[lid + 1].t : MAX_HIST;
-      for (y = 0; y < REG_SIZE; ++y) {
-         for (x = 0; x < REG_SIZE; ++x) {
-            xi = rx * REG_SIZE + x;
-            yi = ry * REG_SIZE + y;
-            v = img[yi * width + xi];
-            if (v >= t0 && v < t1)      
-               g->out_img[yi * width + xi] = (int)r->layers[lid].avg;
-         }
-      }
-   }
+   //for (lid = 0; lid < r->layer_count; ++lid) {
+   //   t0 = r->layers[lid].t;
+   //   t1 = lid < r->layer_count - 1 ? r->layers[lid + 1].t : MAX_HIST;
+   //   for (y = 0; y < REG_SIZE; ++y) {
+   //      for (x = 0; x < REG_SIZE; ++x) {
+   //         xi = rx * REG_SIZE + x;
+   //         yi = ry * REG_SIZE + y;
+   //         v = img[yi * width + xi];
+   //         if (v >= t0 && v < t1)      
+   //            g->out_img[yi * width + xi] = (int)r->layers[lid].avg;
+   //      }
+   //   }
+   //}
 }
 
 __global__ void splixt_calc_mountine_initial (Global *g, Mountine* m)
@@ -336,48 +336,54 @@ __global__ void splixt_plane_construct (Global *g, int *flag)
       nei[neicnt++] = (ry + 1) * nx + rx; 
 
    // try to assign every layer to some plane
-   q0 = -1;
    for (j = 0; j < r->layer_count; ++j)
    {
       // find the most similiar layer among the neighbors
       l = r->layers + j;
-      if (l->q)
+      if (l->q >= 0)
          continue; // skip already assigned
+      q0 = -1;
       for (i = 0; i < neicnt; ++i)
       {
          r2 = rr + nei[i];
          for (k = 0; k < r2->layer_count; ++k)
          {
             l2 = r2->layers + k;
-            if (!l2->q)
+            if (l2->q < 0)
                continue; // skip unassigned neighbors
             diff = fabs(l->avg - l2->avg);
             sigma = sqrtf(l2->stddev);
             if (q0 < 0 || diff < min)
+            {
                q0 = l2->q;
+               min = diff;
+            }
          }
       }
       
       // check similiarity
-      sigma += sqrtf(l->stddev);
-      if (sigma < 1) sigma = 1;
-      single = min / sigma;
+      if (q0 >= 0)
+      {
+         sigma += sqrtf(l->stddev);
+         if (sigma < 1) sigma = 1;
+         single = min;// / sigma;
 
-      if (single < 2)
-      {  
-         l->q = q0;
-         r->pln_dst[q0] = 0;
-         p = g->pp + q0;
-      
-         // lock
-         while (!atomicCAS(&p->lock, 0, 1))
-            ;
-         p->v0 += l->v0;
-         p->v1 += l->v1;
-         p->v2 += l->v2;
-         *flag = 1;
-         // unlock
-         p->lock = 0;
+         if (single < 1.5)
+         {  
+            l->q = q0;
+            r->pln_dst[q0] = 0;
+            p = g->pp + q0;
+         
+            // lock
+            while (!atomicCAS(&p->lock, 0, 1))
+               ;
+            p->v0 += l->v0;
+            p->v1 += l->v1;
+            p->v2 += l->v2;
+            *flag = 1;
+            // unlock
+            p->lock = 0;
+         }
       }
    }
 
@@ -388,7 +394,7 @@ __global__ void splixt_plane_construct (Global *g, int *flag)
 __global__ void splixt_seed_show (Global *g, Mountine* m, int cnt)
 {
    Region *r, *rr;
-   int rx, ry, nx, ny, x, y, i;
+   int rx, ry, nx, ny, x, y, i, t0, t1, v;
 
    nx = g->nx;
    ny = g->ny;
@@ -401,9 +407,57 @@ __global__ void splixt_seed_show (Global *g, Mountine* m, int cnt)
 
    for (i = 0; i < cnt; ++i)
       if (m[i].rx == rx && m[i].ry == ry)
+      {
+         t0 = r->layers[i].t;
+         t1 = i < r->layer_count - 1 ? r->layers[i + 1].t : MAX_HIST;
+
          for (x = 0; x < REG_SIZE; ++x)
             for (y = 0; y < REG_SIZE; ++y)
-               g->out_img[(ry * REG_SIZE + y) * g->w + rx * REG_SIZE + x] = r->layers[m[i].lid].avg;
+            {
+               v = g->img[(ry * REG_SIZE + y) * g->w + rx * REG_SIZE + x];
+               if (v >= t0 && v < t1)
+                  g->out_img[(ry * REG_SIZE + y) * g->w + rx * REG_SIZE + x] = r->layers[m[i].lid].avg;
+            }
+      }
+}
+
+__global__ void splixt_plane_show (Global *g, int cnt)
+{
+   Plane *p;
+   Region *r, *rr;
+   Layer *l;
+   int rx, ry, nx, ny, x, y, i, t0, t1, v, c;
+
+   nx = g->nx;
+   ny = g->ny;
+   rx = blockIdx.x * blockDim.x + threadIdx.x;
+   ry = blockIdx.y * blockDim.y + threadIdx.y;
+   rr = g->rr;
+   if (rx >= nx || ry >= ny)
+      return;
+   r = rr + ry * nx + rx;
+
+   for (i = 0; i < r->layer_count; ++i)
+   {
+      l = r->layers + i;
+      if (l->q == 0)
+      {        
+         p = g->pp + l->q;
+         c = 0;//l->q * 255 / cnt;//(float)p->v1 / p->v0;
+         t0 = l->t;
+         t1 = i < r->layer_count - 1 ? r->layers[i + 1].t : MAX_HIST;
+         for (x = 0; x < REG_SIZE; ++x)
+         {
+            for (y = 0; y < REG_SIZE; ++y)
+            {                                                            
+               v = g->img[(ry * REG_SIZE + y) * g->w + rx * REG_SIZE + x];
+               if (v >= t0 && v < t1)
+                  g->out_img[(ry * REG_SIZE + y) * g->w + rx * REG_SIZE + x] = c;
+            }
+               
+         }
+      }
+   }
 }
 
 __global__ void splixt_out_img_clear (Global *g)
