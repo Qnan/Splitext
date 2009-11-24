@@ -35,6 +35,9 @@ __global__ void splixt_region_split (Region *rr, int nx, int ny, int* img, int i
       sigma, max_sigma;
    rx = blockIdx.x * blockDim.x + threadIdx.x;
    ry = blockIdx.y * blockDim.y + threadIdx.y;
+   if (rx >= nx || ry >= ny)
+      return;
+
    r = rr + ry * nx + rx;
    for (v = 0; v < MAX_HIST; ++v)
       r->hist[v] = 0;
@@ -42,10 +45,8 @@ __global__ void splixt_region_split (Region *rr, int nx, int ny, int* img, int i
    r->rx = rx;
    r->ry = ry;
    r->max_plane = 0;
-   for (y = 0; y < REG_SIZE; ++y)
-   {
-      for (x = 0; x < REG_SIZE; ++x)
-      {
+   for (y = 0; y < REG_SIZE; ++y) {
+      for (x = 0; x < REG_SIZE; ++x) {
          xi = rx * REG_SIZE + x;
          yi = ry * REG_SIZE + y;
          r->hist[img[yi * img_pitch + xi]]++;
@@ -59,8 +60,7 @@ __global__ void splixt_region_split (Region *rr, int nx, int ny, int* img, int i
    t0 = layer->t;
    t1 = lid < r->layer_count - 1 ? r->layers[lid + 1].t : MAX_HIST;
    layer->v0 = layer->v1 = layer->v2 = 0;
-   for (v = t0; v < t1; ++v)
-   {
+   for (v = t0; v < t1; ++v) {
       layer->v0 += r->hist[v];
       layer->v1 += v * r->hist[v];
       layer->v2 += v * v * r->hist[v];
@@ -73,15 +73,12 @@ __global__ void splixt_region_split (Region *rr, int nx, int ny, int* img, int i
 
    variance_treshold = separability_treshold * r->variance;
    lid = 0;
-   do
-   {  
+   do {  
       max_sigma = 0;
       // select layer to split
-      for (i = 0; i < r->layer_count; ++i)
-      {
+      for (i = 0; i < r->layer_count; ++i) {
          sigma = r->layers[i].stddev * r->layers[i].v0 / REG_SIZE_SQ;
-         if (sigma > max_sigma)
-         {
+         if (sigma > max_sigma) {
             max_sigma = sigma;
             lid = i;
          }
@@ -101,15 +98,12 @@ __global__ void splixt_region_split (Region *rr, int nx, int ny, int* img, int i
       
       max_variance = 0;
       tb = -1;
-      for (t = t0; t < t1; ++t)
-      {
-         if (v01 > 0 && v02 > 0)
-         {
+      for (t = t0; t < t1; ++t) {
+         if (v01 > 0 && v02 > 0) {
             d1 = (float)v11 / v01 - r->average;
             d2 = (float)v12 / v02 - r->average;
             bcv = (d1 * d1 * v01 + d2 * d2 * v02) / layer->v0;
-            if (bcv > max_variance)
-            {
+            if (bcv > max_variance) {
                max_variance = bcv;
                tb = t;
             }     
@@ -137,8 +131,7 @@ __global__ void splixt_region_split (Region *rr, int nx, int ny, int* img, int i
       t0 = layer->t;
       t1 = lid < r->layer_count - 1 ? r->layers[lid + 1].t : MAX_HIST;
       layer->v0 = layer->v1 = layer->v2 = 0;
-      for (v = t0; v < t1; ++v)
-      {
+      for (v = t0; v < t1; ++v) {
          layer->v0 += r->hist[v];
          layer->v1 += v * r->hist[v];
          layer->v2 += v * v * r->hist[v];
@@ -163,14 +156,11 @@ __global__ void splixt_region_split (Region *rr, int nx, int ny, int* img, int i
    } while (bcv < variance_treshold && r->layer_count < MAX_LAYERS);
                      
    // write split results
-   for (lid = 0; lid < r->layer_count; ++lid)
-   {
+   for (lid = 0; lid < r->layer_count; ++lid) {
       t0 = r->layers[lid].t;
       t1 = lid < r->layer_count - 1 ? r->layers[lid + 1].t : MAX_HIST;
-      for (y = 0; y < REG_SIZE; ++y)
-      {
-         for (x = 0; x < REG_SIZE; ++x)
-         {
+      for (y = 0; y < REG_SIZE; ++y) {
+         for (x = 0; x < REG_SIZE; ++x) {
             xi = rx * REG_SIZE + x;
             yi = ry * REG_SIZE + y;
             v = img[yi * img_pitch + xi];
@@ -179,4 +169,168 @@ __global__ void splixt_region_split (Region *rr, int nx, int ny, int* img, int i
          }
       }
    }
+}
+
+__global__ void splixt_plane_construct (Global *g, Region *rr, int nx, int ny, int* img, int img_pitch, Mountine* mnts)
+{
+   Region *r, *r2;
+   Layer *layer;                
+   Mountine *mnt;
+   int x, y, /*xi, yi,*/ rx, ry, lid, i, i0, nn, q, mnt2;//, d, j;
+   int nei[4], neicnt = 0;
+   float mountine, max_mountine, avg, first_mountine;
+   rx = blockIdx.x * blockDim.x + threadIdx.x;
+   ry = blockIdx.y * blockDim.y + threadIdx.y;
+   if (rx >= nx || ry >= ny)
+      return;
+   r = rr + ry * nx + rx;
+   nn = nx * ny;
+
+   if (rx > 0)
+      nei[neicnt++] = ry * nx + rx - 1;
+   if (rx < nx - 1)
+      nei[neicnt++] = ry * nx + rx + 1;
+   if (ry > 0)
+      nei[neicnt++] = (ry - 1) * nx + rx;
+   if (ry < ny - 1)
+      nei[neicnt++] = (ry + 1) * nx + rx;
+
+   // calculate initial mountine function
+   max_mountine = 0;
+   for (lid = 0; lid < r->layer_count; ++lid)
+   {
+      mountine = 0;
+      layer = r->layers + lid;
+      for (y = 0; y < ny; ++y) {
+         for (x = 0; x < nx; ++x) {
+            r2 = rr + y * nx + x;
+            for (i = 0; i < r2->layer_count; ++i) {
+               mountine += expf(-fabs(r2->layers[i].avg - layer->avg));
+            }
+         }
+      }
+      layer->mountine = mountine;
+      if (mountine > max_mountine)
+         max_mountine = mountine;
+   }
+
+   // init plane distances
+   for (i = 0; i < MAX_PLANES; ++i)
+      r->pln_dst[i] = -1;
+
+   __syncthreads();
+
+   // select seeds
+   q = 1;
+   while (1)
+   {
+      if (q >= MAX_PLANES)
+         break;
+      mnt = mnts + ry * nx + rx;
+      mnt->mountine = (int)(max_mountine / nn * INT_MAX / nn) * nn + ry * nx + rx;
+      
+      // find maximum mountine
+      do {  
+         __syncthreads();
+         if (rx == 0 && ry == 0)
+            g->change_flag = 0;
+         __syncthreads();
+         for (i = 0; i < neicnt; ++i)
+         {
+            mnt2 = mnts[nei[i]].mountine;
+            if (mnt2 > mnt->mountine)
+            {
+               mnt->mountine = mnt2;
+               g->change_flag = 1;
+            }
+         }
+         __syncthreads();
+      } while (g->change_flag);
+
+      // max mountine region location
+      r2 = rr + (mnt->mountine % nn);
+      
+      // find max mountine layer
+      i0 = 0;
+      for (i = 0; i < r2->layer_count; ++i)
+         if (r2->layers[i].mountine > r2->layers[i0].mountine)
+            i0 = i;
+      avg = r2->layers[i0].avg;
+      mountine = r2->layers[i0].mountine;
+      
+      if (rx == 0 && ry == 0)
+      {
+         r2->layers[i0].q = q;
+         r2->pln_dst[q] = 0;
+      }
+
+      if (q == 1)
+         first_mountine = mountine;
+      q++;
+
+      if (mountine < mountine_ratio_treshold * first_mountine)
+         break;
+
+      __syncthreads();
+
+      max_mountine = 0;
+      for (i = 0; i < r->layer_count; ++i)
+      {
+         r->layers[i].mountine -= mountine * expf(-fabs(avg - r->layers[i].avg));
+         if (r->layers[i].mountine > max_mountine)
+            max_mountine = r->layers[i].mountine;
+      }
+
+      __syncthreads();
+      
+      if (rx == 0 && ry == 0)           
+         r2->layers[i0].mountine = 0;
+
+      __syncthreads();
+   }
+
+   //if (rx == 0 && ry == 0)
+   //   for (i = 0; i < MAX_PLANES; ++i)
+   //      g->pln_lock[i] = 0;
+
+   //__syncthreads();
+
+   //if (rx == 0 && ry == 0)
+   //   rx = ry;
+
+   // extend planes
+   //do {
+   //   __syncthreads();
+   //   if (rx == 0 && ry == 0)
+   //      g->change_flag = 0;
+   //   __syncthreads();
+
+   //   for (i = 0; i < neicnt; ++i)
+   //   {
+   //      for (j = 0; j < q; ++j)
+   //      d = rr[nei[i]].pln_dst[j];
+   //      if (d >= 0 && d + 1 < r->pln_dst[j])
+   //      {
+   //         r->pln_dst[j] = d + 1;
+   //         g->change_flag = 1;
+   //      }
+   //   }
+   //   __syncthreads();
+   //} while (g->change_flag);
+
+   //i = 0;
+   //while (!atomicCAS(g->pln_lock + i, 0, 1))
+   //   ;
+   //atomicCAS(g->pln_lock + i, 1, 0);
+
+
+   // write split results
+   //for (y = 0; y < REG_SIZE; ++y) {
+   //   for (x = 0; x < REG_SIZE; ++x) {
+   //      xi = rx * REG_SIZE + x;
+   //      yi = ry * REG_SIZE + y;
+   //      img[yi * img_pitch + xi] = (mnt->mountine % nn) % 255;
+   //   }
+   //}
+
 }

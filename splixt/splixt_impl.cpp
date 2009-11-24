@@ -15,7 +15,8 @@ void runSplitText(int argc, char** argv)
       cudaSetDevice( cutGetMaxGflopsDeviceId() );
 
    Image img;
-   image_load(&img, "../img/test1.raw");
+   image_load(&img, "../img/test.raw");
+   //image_load(&img, "../img/test_big.raw");
 
    // allocate host memory for matrices A and B
    unsigned int img_size = img.width * img.height;
@@ -24,10 +25,14 @@ void runSplitText(int argc, char** argv)
    // allocate device memory
    int* d_img;
    Region* d_regs;
+   Global* d_g;
+   Mountine* d_mountine;
    int nx = img.width / REG_SIZE, ny = img.height / REG_SIZE;
    cutilSafeCall(cudaMalloc((void**) &d_img, mem_size));
-   cutilSafeCall(cudaMalloc((void**) &d_regs, nx * sizeof(Region) * ny));
    cutilSafeCall(cudaMemcpy(d_img, img.data, mem_size, cudaMemcpyHostToDevice));
+   cutilSafeCall(cudaMalloc((void**) &d_regs, nx * sizeof(Region) * ny));
+   cutilSafeCall(cudaMalloc((void**) &d_g, sizeof(Global)));
+   cutilSafeCall(cudaMalloc((void**) &d_mountine, sizeof(Mountine)));
 
    // create and start timer
    unsigned int timer = 0;
@@ -35,12 +40,13 @@ void runSplitText(int argc, char** argv)
    cutilCheckError(cutStartTimer(timer));
 
    // setup execution parameters
-   //dim3 threads(BLOCK_SIZE, BLOCK_SIZE);
-   dim3 grid(nx, ny);
+   dim3 threads(BLOCK_SIZE, BLOCK_SIZE);
+   dim3 grid((nx + BLOCK_SIZE - 1) / BLOCK_SIZE, (ny + BLOCK_SIZE - 1) / BLOCK_SIZE);
 
    // execute the kernel
    //splixt_region_split<<< grid, 1 >>>(d_img, img.width, img.height, 100);
-   splixt_region_split<<< grid, 1 >>>(d_regs, nx, ny, d_img, img.width);
+   splixt_region_split<<< grid, threads >>>(d_regs, nx, ny, d_img, img.width);
+   splixt_plane_construct<<< grid, threads >>>(d_g, d_regs, nx, ny, d_img, img.width, d_mountine);
 
    // check if kernel execution generated and error
    cutilCheckMsg("Kernel execution failed");

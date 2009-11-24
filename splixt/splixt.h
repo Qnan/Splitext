@@ -13,8 +13,9 @@
 #define _splixt_H_
 
 // Thread block size
-#define BLOCK_SIZE 16
+#define BLOCK_SIZE 4
 #define MAX_LAYERS 16
+#define MAX_PLANES 16
 #define MAX_HIST 256
 #define REG_SIZE 128
 #define REG_SIZE_SQ (REG_SIZE*REG_SIZE)
@@ -37,9 +38,15 @@ typedef struct tagLayer{
    float mountine;
 }Layer;
 
+typedef struct tagMountine{
+   int mountine;
+   int idx;
+}Mountine;
+
 typedef struct tagRegion{
    Layer layers[MAX_LAYERS];
    int hist[MAX_HIST];
+   int pln_dst[MAX_PLANES];
    int layer_count;
    int rx;
    int ry; 
@@ -49,9 +56,14 @@ typedef struct tagRegion{
 }Region;
 
 typedef struct tagPlane{
-	float average;
-	float variance;
+	float sum_avg;
+	float sum_var;
 }Plane;
+
+typedef struct tagGlobal{
+	int change_flag;
+//   int pln_lock[MAX_PLANES];
+}Global;
 
 #endif // _splixt_H_
 
