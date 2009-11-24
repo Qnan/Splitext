@@ -87,6 +87,23 @@ void runSplitText(int argc, char** argv)
       splixt_plane_construct<<< grid, threads >>>(d_g, &flag);
    } while (flag);
 
+
+   while (i < )
+      cutilSafeCall(cudaMemcpy(&d_mnt[i], &h_mnt, sizeof(Mountine), cudaMemcpyHostToDevice));
+      if (i == 0)
+      {
+         splixt_calc_mountine_initial<<< grid, threads >>>(d_g, &d_mnt[0]);
+         cutilSafeCall(cudaMemcpy(&first_mnt, &d_mnt[0].mountine, sizeof(float), cudaMemcpyDeviceToHost));
+      }
+      else                                                                 
+      {
+         splixt_calc_mountine_update<<< grid, threads >>>(d_g, &d_mnt[i], &d_mnt[i - 1]);
+         cutilSafeCall(cudaMemcpy(&last_mnt, &d_mnt[i].mountine, sizeof(float), cudaMemcpyDeviceToHost));
+         if (last_mnt < first_mnt * mountine_ratio_treshold)
+            break;
+      }
+   }
+
    //splixt_seed_show<<< grid, threads >>>(d_g, d_mnt, nseeds);   
 
    splixt_plane_show<<< grid, threads >>>(d_g, nseeds);   

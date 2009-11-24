@@ -366,9 +366,9 @@ __global__ void splixt_plane_construct (Global *g, int *flag)
       {
          sigma += sqrtf(l->stddev);
          if (sigma < 1) sigma = 1;
-         single = min;// / sigma;
+         single = min / sigma;
 
-         if (single < 1.5)
+         if (single < 1.0)
          {  
             l->q = q0;
             r->pln_dst[q0] = 0;
@@ -440,10 +440,10 @@ __global__ void splixt_plane_show (Global *g, int cnt)
    for (i = 0; i < r->layer_count; ++i)
    {
       l = r->layers + i;
-      if (l->q == 0)
+      if (l->q >= 0)
       {        
          p = g->pp + l->q;
-         c = 0;//l->q * 255 / cnt;//(float)p->v1 / p->v0;
+         c = l->q * 255 / cnt;//(float)p->v1 / p->v0;
          t0 = l->t;
          t1 = i < r->layer_count - 1 ? r->layers[i + 1].t : MAX_HIST;
          for (x = 0; x < REG_SIZE; ++x)
