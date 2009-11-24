@@ -23,16 +23,6 @@ void runSplitText(int argc, char** argv)
    //image_load(&img, "../img/test_big.raw");
    int w = img.width, h = img.height;
    unsigned int mem_size = sizeof(int) * w * h;
-   
-   // allocate device memory
-   int *d_img;
-   cutilSafeCall(cudaMalloc((void**) &d_img, mem_size));
-   cutilSafeCall(cudaMemcpy(d_img, img.data, mem_size, cudaMemcpyHostToDevice));
-
-   // create and start timer
-   unsigned int timer = 0;
-   cutilCheckError(cutCreateTimer(&timer));
-   cutilCheckError(cutStartTimer(timer));
 
    // setup execution parameters
    int nx = w / REG_SIZE;
@@ -50,6 +40,9 @@ void runSplitText(int argc, char** argv)
    Plane* d_pp;
    int pc;
    int *d_flag, flag;
+   int *d_img;
+   int i;
+   cutilSafeCall(cudaMalloc((void**) &d_img, mem_size));
    cutilSafeCall(cudaMalloc((void**) &d_mnt, MAX_MNT * sizeof(Mountine)));
    cutilSafeCall(cudaMalloc((void**) &d_bp, mem_size));   
    cutilSafeCall(cudaMalloc((void**) &d_ll, mem_size));   
@@ -58,32 +51,31 @@ void runSplitText(int argc, char** argv)
    cutilSafeCall(cudaMalloc((void**) &d_pp, MAX_PLANES * sizeof(Plane)));
    cutilSafeCall(cudaMalloc((void**) &d_flag, sizeof(int)));
 
+   cutilSafeCall(cudaMemcpy(d_img, img.data, mem_size, cudaMemcpyHostToDevice));
+
+   // create and start timer
+   unsigned int timer = 0;
+   cutilCheckError(cutCreateTimer(&timer));
+   cutilCheckError(cutStartTimer(timer));
+
    // split
    splixt_region_split<<< reg_grid, reg_threads >>>(d_rr, nx, ny, d_img, w);
    cutilCheckMsg("Kernel execution failed");
 
    // seed
    float first_mnt, last_mnt;
-   int i;
-   for (i = 0; i < MAX_MNT; ++i)
+   cutilSafeCall(cudaMemcpy(d_mnt, &h_mnt, sizeof(Mountine), cudaMemcpyHostToDevice));
+   splixt_calc_mountine_initial<<< reg_grid, reg_threads >>>(d_rr, nx, ny, d_mnt);
+   cutilCheckMsg("Kernel execution failed");
+   cutilSafeCall(cudaMemcpy(&h_mnt_ret, d_mnt, sizeof(Mountine), cudaMemcpyDeviceToHost));
+   last_mnt = first_mnt = h_mnt_ret.mountine;
+   for (i = 1; i < MAX_MNT && last_mnt > first_mnt * mountine_ratio_treshold; ++i)
    {  
       cutilSafeCall(cudaMemcpy(d_mnt + i, &h_mnt, sizeof(Mountine), cudaMemcpyHostToDevice));
-      if (i == 0)
-      {
-         splixt_calc_mountine_initial<<< reg_grid, reg_threads >>>(d_rr, nx, ny, d_mnt);
-         cutilCheckMsg("Kernel execution failed");
-         cutilSafeCall(cudaMemcpy(&h_mnt_ret, d_mnt, sizeof(Mountine), cudaMemcpyDeviceToHost));
-         first_mnt = h_mnt_ret.mountine;
-      }
-      else                                                                 
-      {
-         splixt_calc_mountine_update<<< reg_grid, reg_threads >>>(d_rr, nx, ny, d_mnt + i, d_mnt + i - 1);
-         cutilCheckMsg("Kernel execution failed");
-         cutilSafeCall(cudaMemcpy(&h_mnt_ret, d_mnt + i, sizeof(Mountine), cudaMemcpyDeviceToHost));
-         last_mnt = h_mnt_ret.mountine;
-         if (last_mnt < first_mnt * mountine_ratio_treshold)
-            break;
-      }
+      splixt_calc_mountine_update<<< reg_grid, reg_threads >>>(d_rr, nx, ny, d_mnt + i, d_mnt + i - 1);
+      cutilCheckMsg("Kernel execution failed");
+      cutilSafeCall(cudaMemcpy(&h_mnt_ret, d_mnt + i, sizeof(Mountine), cudaMemcpyDeviceToHost));
+      last_mnt = h_mnt_ret.mountine;
    }
    pc = i;
 
