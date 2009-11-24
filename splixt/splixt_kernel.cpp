@@ -156,19 +156,19 @@ __global__ void splixt_region_split (Region *rr, int nx, int ny, int* img, int i
    } while (bcv < variance_treshold && r->layer_count < MAX_LAYERS);
                      
    // write split results
-   for (lid = 0; lid < r->layer_count; ++lid) {
-      t0 = r->layers[lid].t;
-      t1 = lid < r->layer_count - 1 ? r->layers[lid + 1].t : MAX_HIST;
-      for (y = 0; y < REG_SIZE; ++y) {
-         for (x = 0; x < REG_SIZE; ++x) {
-            xi = rx * REG_SIZE + x;
-            yi = ry * REG_SIZE + y;
-            v = img[yi * img_pitch + xi];
-            if (v >= t0 && v < t1)      
-               img[yi * img_pitch + xi] = (int)r->layers[lid].avg;
-         }
-      }
-   }
+   //for (lid = 0; lid < r->layer_count; ++lid) {
+   //   t0 = r->layers[lid].t;
+   //   t1 = lid < r->layer_count - 1 ? r->layers[lid + 1].t : MAX_HIST;
+   //   for (y = 0; y < REG_SIZE; ++y) {
+   //      for (x = 0; x < REG_SIZE; ++x) {
+   //         xi = rx * REG_SIZE + x;
+   //         yi = ry * REG_SIZE + y;
+   //         v = img[yi * img_pitch + xi];
+   //         if (v >= t0 && v < t1)      
+   //            img[yi * img_pitch + xi] = (int)r->layers[lid].avg;
+   //      }
+   //   }
+   //}
 }
 
 __global__ void splixt_plane_construct (Global *g, Region *rr, int nx, int ny, int* img, int img_pitch, Mountine* mnts)
@@ -176,7 +176,7 @@ __global__ void splixt_plane_construct (Global *g, Region *rr, int nx, int ny, i
    Region *r, *r2;
    Layer *layer;                
    Mountine *mnt;
-   int x, y, /*xi, yi,*/ rx, ry, lid, i, i0, nn, q, mnt2;//, d, j;
+   int x, y, xi, yi, rx, ry, lid, i, i0, nn, q, mnt2, d, j, k, m, t0, t1, v;
    int nei[4], neicnt = 0;
    float mountine, max_mountine, avg, first_mountine;
    rx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -289,48 +289,81 @@ __global__ void splixt_plane_construct (Global *g, Region *rr, int nx, int ny, i
       __syncthreads();
    }
 
-   //if (rx == 0 && ry == 0)
-   //   for (i = 0; i < MAX_PLANES; ++i)
-   //      g->pln_lock[i] = 0;
+   if (rx == 0 && ry == 0)
+      for (i = 0; i < MAX_PLANES; ++i)
+         g->pln_lock[i] = 0;
 
-   //__syncthreads();
-
-   //if (rx == 0 && ry == 0)
-   //   rx = ry;
+   __syncthreads();
 
    // extend planes
-   //do {
-   //   __syncthreads();
-   //   if (rx == 0 && ry == 0)
-   //      g->change_flag = 0;
-   //   __syncthreads();
+   do
+   {
+      __syncthreads();
+      if (rx == 0 && ry == 0)
+         g->change_flag_2 = 0;
 
-   //   for (i = 0; i < neicnt; ++i)
-   //   {
-   //      for (j = 0; j < q; ++j)
-   //      d = rr[nei[i]].pln_dst[j];
-   //      if (d >= 0 && d + 1 < r->pln_dst[j])
-   //      {
-   //         r->pln_dst[j] = d + 1;
-   //         g->change_flag = 1;
-   //      }
-   //   }
-   //   __syncthreads();
-   //} while (g->change_flag);
+      do {
+         __syncthreads();
+         if (rx == 0 && ry == 0)
+            g->change_flag = 0;
+         __syncthreads();
 
+         for (i = 0; i < neicnt; ++i)
+         {
+            for (j = 0; j < q; ++j)
+            {
+               d = rr[nei[i]].pln_dst[j];
+               if (d >= 0 && (r->pln_dst[j] < 0 || d + 1 < r->pln_dst[j]))
+               {
+                  r->pln_dst[j] = d + 1;
+                  g->change_flag = 1;
+               }
+            }
+         }
+         __syncthreads();
+      } while (g->change_flag);
+
+      for (i = 0; i < neicnt; ++i)
+      {
+         r2 = rr + nei[i];
+         for (j = 0; j < r2->layer_count; ++j)
+         {
+            d = r2->layers[j].q;
+            if (r->pln_dst[d] > 0) {
+               for (k = 0; k < r->layer_count; ++k) {
+                  if (fabs(r->layers[k].avg - r2->layers[j].avg) < 5.0f) {
+                     r->layers[k].q = d;
+                     r->pln_dst[d] = 0;
+                     g->change_flag_2 = 1;
+                     break;
+                  }
+               }
+            }
+         }
+      }
+
+      __syncthreads();
+   } while (g->change_flag_2);
    //i = 0;
    //while (!atomicCAS(g->pln_lock + i, 0, 1))
    //   ;
    //atomicCAS(g->pln_lock + i, 1, 0);
 
-
    // write split results
-   //for (y = 0; y < REG_SIZE; ++y) {
-   //   for (x = 0; x < REG_SIZE; ++x) {
-   //      xi = rx * REG_SIZE + x;
-   //      yi = ry * REG_SIZE + y;
-   //      img[yi * img_pitch + xi] = (mnt->mountine % nn) % 255;
-   //   }
-   //}
+   for (lid = 0; lid < r->layer_count; ++lid) {
+      t0 = r->layers[lid].t;
+      t1 = lid < r->layer_count - 1 ? r->layers[lid + 1].t : MAX_HIST;
+      for (y = 0; y < REG_SIZE; ++y) {
+         for (x = 0; x < REG_SIZE; ++x) {
+            xi = rx * REG_SIZE + x;
+            yi = ry * REG_SIZE + y;
+            v = img[yi * img_pitch + xi];
+            if (v >= t0 && v < t1 && r->layers[lid].q == 1)      
+               img[yi * img_pitch + xi] = 0;
+            //else
+            //   img[yi * img_pitch + xi] = 0xFF;
+         }
+      }
+   }
 
 }

@@ -62,7 +62,8 @@ typedef struct tagPlane{
 
 typedef struct tagGlobal{
 	int change_flag;
-//   int pln_lock[MAX_PLANES];
+   int change_flag_2;
+   int pln_lock[MAX_PLANES];
 }Global;
 
 #endif // _splixt_H_
