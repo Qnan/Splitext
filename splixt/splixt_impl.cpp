@@ -114,7 +114,7 @@ void runSplitText(int argc, char** argv)
          cutilCheckMsg("Kernel 'resolve' execution failed");
          cust_cca_d_relabel<<< cca_grid, cca_threads >>>(d_bp, w, h, d_ll, d_ref);
          cutilCheckMsg("Kernel 'relabel' execution failed");
-      }
+      }      \
       cust_cca_d_display<<< cca_grid, cca_threads >>>(d_bp, w, h, d_ll);
       cutilCheckMsg("Kernel execution failed");
       break;
