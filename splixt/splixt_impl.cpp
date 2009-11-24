@@ -22,16 +22,18 @@ void runSplitText(int argc, char** argv)
    unsigned int mem_size = sizeof(int) * img_size;
    
    // allocate device memory
-   Global *d_g;
+   Global *d_g, h_g;
    cutilSafeCall(cudaMalloc((void**) &d_g, sizeof(Global)));
-   d_g->nx = img.width / REG_SIZE, d_g->ny = img.height / REG_SIZE;
-   d_g->w = img.width;
-   d_g->h = img.height;
+   h_g.nx = img.width / REG_SIZE;
+   h_g.ny = img.height / REG_SIZE;
+   h_g.w = img.width;
+   h_g.h = img.height;
 
-   cutilSafeCall(cudaMalloc((void**) &d_g->img, mem_size));
-   cutilSafeCall(cudaMemcpy(d_g->img, img.data, mem_size, cudaMemcpyHostToDevice));
-   cutilSafeCall(cudaMalloc((void**) &d_g->out_img, mem_size));
-   cutilSafeCall(cudaMalloc((void**) &d_g->rr, d_g->nx * sizeof(Region) * d_g->ny));
+   cutilSafeCall(cudaMalloc((void**) &h_g.img, mem_size));
+   cutilSafeCall(cudaMemcpy(h_g.img, img.data, mem_size, cudaMemcpyHostToDevice));
+   cutilSafeCall(cudaMalloc((void**) &h_g.out_img, mem_size));
+   cutilSafeCall(cudaMalloc((void**) &h_g.rr, h_g.nx * sizeof(Region) * h_g.ny));
+   cutilSafeCall(cudaMalloc((void**) &h_g.pp, MAX_PLANES * sizeof(Plane)));
 
    Mountine *d_mnt, h_mnt;
    h_mnt.rx = h_mnt.ry = h_mnt.lid = -1;
@@ -45,9 +47,10 @@ void runSplitText(int argc, char** argv)
    cutilCheckError(cutCreateTimer(&timer));
    cutilCheckError(cutStartTimer(timer));
 
+   cutilSafeCall(cudaMemcpy(d_g, &h_g, sizeof(Global), cudaMemcpyHostToDevice));
    // setup execution parameters
    dim3 threads(BLOCK_SIZE, BLOCK_SIZE);
-   dim3 grid((d_g->nx + BLOCK_SIZE - 1) / BLOCK_SIZE, (d_g->ny + BLOCK_SIZE - 1) / BLOCK_SIZE);
+   dim3 grid((h_g.nx + BLOCK_SIZE - 1) / BLOCK_SIZE, (h_g.ny + BLOCK_SIZE - 1) / BLOCK_SIZE);
 
    // split regions into layers
    splixt_region_split<<< grid, threads >>>(d_g);
@@ -71,15 +74,22 @@ void runSplitText(int argc, char** argv)
             break;
       }
    }
+   int nseeds = i;
    splixt_out_img_clear<<< grid, threads >>>(d_g);   
-   //splixt_seed_show<<< grid, threads >>>(d_g, d_mnt, i);   
-   splixt_planes_init<<< grid, threads >>>(d_g, d_mnt, i);   
+   //splixt_seed_show<<< grid, threads >>>(d_g, d_mnt, nseeds);   
+   splixt_planes_init<<< nseeds, 1 >>>(d_g, d_mnt); 
+   int flag = 1;
+   
+   do {
+      flag = 0;
+      splixt_plane_construct<<< grid, threads >>>(d_g, &flag);
+   } while (flag);
 
    // check if kernel execution generated and error
    cutilCheckMsg("Kernel execution failed");
 
    // copy result from device to host
-   cutilSafeCall(cudaMemcpy(img.data, d_g->out_img, mem_size, cudaMemcpyDeviceToHost));
+   //cutilSafeCall(cudaMemcpy(img.data, d_g->out_img, mem_size, cudaMemcpyDeviceToHost));
 
    // stop and destroy timer
    cutilCheckError(cutStopTimer(timer));
@@ -91,9 +101,10 @@ void runSplitText(int argc, char** argv)
 
    // clean up memory
    image_dispose(&img);
-   cutilSafeCall(cudaFree(d_g->img));
-   cutilSafeCall(cudaFree(d_g->rr));
-   cutilSafeCall(cudaFree(d_g->pp));
+   cutilSafeCall(cudaFree(h_g.img));
+   cutilSafeCall(cudaFree(h_g.out_img));
+   cutilSafeCall(cudaFree(h_g.rr));
+   cutilSafeCall(cudaFree(h_g.pp));
    cutilSafeCall(cudaFree(d_g));
 
    cudaThreadExit();

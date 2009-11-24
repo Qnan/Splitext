@@ -285,10 +285,37 @@ __global__ void splixt_calc_mountine_update (Global *g, Mountine* m, Mountine* m
    }
 }
 
-__global__ void splixt_planes_init (Global *g, Mountine* m, int cnt)
+__global__ void splixt_planes_init (Global *g, Mountine* mm)
 {
-   Region *r, *rr;
-   int rx, ry, nx, ny, x, y, i;
+   Mountine *m;
+   Region *r;
+   Plane *p;
+   Layer *l;
+   int q;
+   
+   q = blockIdx.x;             
+   m = mm + q;
+   p = g->pp + q;
+   r = g->rr + m->ry * g->nx + m->rx;
+   l = r->layers + m->lid;
+
+   l->q = q;
+   r->pln_dst[q] = 0;
+   p->v0 = l->v0;
+   p->v1 = l->v1;
+   p->v2 = l->v2;
+   p->lock = 0;
+   p->v0 += 1;
+}  
+
+__global__ void splixt_plane_construct (Global *g, int *flag)
+{
+   Region *r, *rr, *r2;
+   Layer *l, *l2;
+   Plane *p;
+   int rx, ry, nx, ny, j, i, k, q0;
+   float min = 0, diff, sigma, single, centroid;
+   int nei[4], neicnt = 0;
 
    nx = g->nx;
    ny = g->ny;
@@ -299,12 +326,64 @@ __global__ void splixt_planes_init (Global *g, Mountine* m, int cnt)
       return;
    r = rr + ry * nx + rx;
 
-   for (i = 0; i < cnt; ++i)
-      if (m[i].rx == rx && m[i].ry == ry)
-         for (x = 0; x < REG_SIZE; ++x)
-            for (y = 0; y < REG_SIZE; ++y)
-               g->out_img[(ry * REG_SIZE + y) * g->w + rx * REG_SIZE + x] = r->layers[m[i].lid].avg;
-}                                 
+   if (rx > 0)
+      nei[neicnt++] = ry * nx + rx - 1;
+   if (rx < nx - 1)
+      nei[neicnt++] = ry * nx + rx + 1;
+   if (ry > 0)
+      nei[neicnt++] = (ry - 1) * nx + rx;
+   if (ry < ny - 1)
+      nei[neicnt++] = (ry + 1) * nx + rx; 
+
+   // try to assign every layer to some plane
+   q0 = -1;
+   for (j = 0; j < r->layer_count; ++j)
+   {
+      // find the most similiar layer among the neighbors
+      l = r->layers + j;
+      if (l->q)
+         continue; // skip already assigned
+      for (i = 0; i < neicnt; ++i)
+      {
+         r2 = rr + nei[i];
+         for (k = 0; k < r2->layer_count; ++k)
+         {
+            l2 = r2->layers + k;
+            if (!l2->q)
+               continue; // skip unassigned neighbors
+            diff = fabs(l->avg - l2->avg);
+            sigma = sqrtf(l2->stddev);
+            if (q0 < 0 || diff < min)
+               q0 = l2->q;
+         }
+      }
+      
+      // check similiarity
+      sigma += sqrtf(l->stddev);
+      if (sigma < 1) sigma = 1;
+      single = min / sigma;
+
+      if (single < 2)
+      {  
+         l->q = q0;
+         r->pln_dst[q0] = 0;
+         p = g->pp + q0;
+      
+         // lock
+         while (!atomicCAS(&p->lock, 0, 1))
+            ;
+         p->v0 += l->v0;
+         p->v1 += l->v1;
+         p->v2 += l->v2;
+         *flag = 1;
+         // unlock
+         p->lock = 0;
+      }
+   }
+
+
+}
+
 
 __global__ void splixt_seed_show (Global *g, Mountine* m, int cnt)
 {

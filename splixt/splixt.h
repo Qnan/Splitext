@@ -61,8 +61,10 @@ typedef struct tagRegion{
 }Region;
 
 typedef struct tagPlane{
-	float sum_avg;
-	float sum_var;
+   long long v0;
+	long long v1;
+	long long v2;
+   int lock;
 }Plane;
 
 typedef struct tagGlobal{
