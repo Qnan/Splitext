@@ -17,6 +17,7 @@
 #define MAX_LAYERS 16
 #define MAX_PLANES 16
 #define MAX_HIST 256
+#define MAX_MNT 512
 #define REG_SIZE 128
 #define REG_SIZE_SQ (REG_SIZE*REG_SIZE)
 
@@ -39,8 +40,12 @@ typedef struct tagLayer{
 }Layer;
 
 typedef struct tagMountine{
-   int mountine;
-   int idx;
+   int rx;
+   int ry;
+   int lid;
+   float mountine;
+   float avg;
+   int lock;
 }Mountine;
 
 typedef struct tagRegion{
@@ -61,9 +66,13 @@ typedef struct tagPlane{
 }Plane;
 
 typedef struct tagGlobal{
-	int change_flag;
-   int change_flag_2;
-   int pln_lock[MAX_PLANES];
+   //int pln_lock[MAX_PLANES];
+   int *img, *out_img;
+   int w, h;
+   Region* rr;
+   int nx, ny, nn;
+   Plane* pp;
+   int pc;
 }Global;
 
 #endif // _splixt_H_
