@@ -11,7 +11,14 @@ namespace ggg2png
    {
       static void Main(string[] args)
       {
-         string[] files = Directory.GetFiles(args[0]);
+         int shift = 0;
+         bool color = false;
+         if (args[shift] == "c")
+         {
+            color = true;
+            shift++;
+         }
+         string[] files = Directory.GetFiles(args[shift++]);
          foreach (var file in files)
          {
             var path = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(file), "..\\pngs"));
@@ -25,14 +32,21 @@ namespace ggg2png
             int ydpi = br.ReadInt32();
             Bitmap bmp = new Bitmap(width, height);
             for (int y = 0; y < height; ++y)
+            {
                for (int x = 0; x < width; ++x)
                {
-                  int b = (int)(br.ReadUInt32() & 0xFFu);                  
-                  bmp.SetPixel(x, y, Color.FromArgb(b, b, b));
-                  
-                  //int b = (int)(br.ReadUInt32() & 0xFFFFFFu);                  
-                  //bmp.SetPixel(x, y, Color.FromArgb((b >> 16) & 0xFF, (b >> 8) & 0xFF, b & 0xFF));
+                  if (color)
+                  {
+                     int b = (int)(br.ReadUInt32() & 0xFFFFFFu);
+                     bmp.SetPixel(x, y, Color.FromArgb((b >> 16) & 0xFF, (b >> 8) & 0xFF, b & 0xFF));
+                  }
+                  else
+                  {
+                     int b = (int)(br.ReadUInt32() & 0xFFu);
+                     bmp.SetPixel(x, y, Color.FromArgb(b, b, b));
+                  }
                }
+            }
             bmp.Save(dstname, System.Drawing.Imaging.ImageFormat.Png);
          }
       }

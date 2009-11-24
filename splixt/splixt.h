@@ -69,7 +69,7 @@ typedef struct tagPlane{
 
 typedef struct tagGlobal{
    //int pln_lock[MAX_PLANES];
-   int *img, *out_img;
+   int *img, *out_img, *bp;
    int w, h;
    Region* rr;
    int nx, ny, nn;

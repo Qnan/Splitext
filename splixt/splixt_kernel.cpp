@@ -421,6 +421,46 @@ __global__ void splixt_seed_show (Global *g, Mountine* m, int cnt)
       }
 }
 
+__global__ void splixt_binarize (Global *g, int pid)
+{
+   Plane *p;
+   Region *r, *rr;
+   Layer *l;
+   int rx, ry, nx, ny, x, y, i, t0, t1, v, c;
+
+   nx = g->nx;
+   ny = g->ny;
+   rx = blockIdx.x * blockDim.x + threadIdx.x;
+   ry = blockIdx.y * blockDim.y + threadIdx.y;
+   rr = g->rr;
+   if (rx >= nx || ry >= ny)
+      return;
+   r = rr + ry * nx + rx;
+   p = g->pp + pid;
+
+   for (x = 0; x < REG_SIZE; ++x)
+      for (y = 0; y < REG_SIZE; ++y)
+         g->bp[(ry * REG_SIZE + y) * g->w + rx * REG_SIZE + x] = 0xFF;
+   for (i = 0; i < r->layer_count; ++i)
+   {
+      l = r->layers + i;
+      if (l->q == pid)
+      {        
+         t0 = l->t;
+         t1 = i < r->layer_count - 1 ? r->layers[i + 1].t : MAX_HIST;
+         for (x = 0; x < REG_SIZE; ++x)
+         {
+            for (y = 0; y < REG_SIZE; ++y)
+            {                                                            
+               v = g->img[(ry * REG_SIZE + y) * g->w + rx * REG_SIZE + x];
+               if (v >= t0 && v < t1)
+                  g->bp[(ry * REG_SIZE + y) * g->w + rx * REG_SIZE + x] = 0;
+            }                    
+         }
+      }
+   }
+}
+
 __global__ void splixt_plane_show (Global *g, int cnt)
 {
    Plane *p;
@@ -460,7 +500,7 @@ __global__ void splixt_plane_show (Global *g, int cnt)
    }
 }
 
-__global__ void splixt_out_img_clear (Global *g)
+__global__ void splixt_img_clear (Global *g, int *img)
 {
    int rx, ry, nx, ny, x, y;
 
@@ -473,7 +513,7 @@ __global__ void splixt_out_img_clear (Global *g)
 
    for (x = 0; x < REG_SIZE; ++x)
       for (y = 0; y < REG_SIZE; ++y)
-         g->out_img[(ry * REG_SIZE + y) * g->w + rx * REG_SIZE + x] = 0xFF;
+         img[(ry * REG_SIZE + y) * g->w + rx * REG_SIZE + x] = 0xFF;
 }
 
 
