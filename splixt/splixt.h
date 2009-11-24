@@ -15,9 +15,9 @@
 // Thread block size
 #define BLOCK_SIZE 4
 #define MAX_LAYERS 16
-#define MAX_PLANES 16
+#define MAX_PLANES 256
 #define MAX_HIST 256
-#define MAX_MNT 512
+#define MAX_MNT 256
 #define REG_SIZE 128
 #define REG_SIZE_SQ (REG_SIZE*REG_SIZE)
 

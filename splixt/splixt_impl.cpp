@@ -76,20 +76,20 @@ void runSplitText(int argc, char** argv)
    }
    int nseeds = i;
    splixt_out_img_clear<<< grid, threads >>>(d_g);   
-   //splixt_seed_show<<< grid, threads >>>(d_g, d_mnt, nseeds);   
+   splixt_seed_show<<< grid, threads >>>(d_g, d_mnt, nseeds);   
    splixt_planes_init<<< nseeds, 1 >>>(d_g, d_mnt); 
-   int flag = 1;
-   
-   do {
-      flag = 0;
-      splixt_plane_construct<<< grid, threads >>>(d_g, &flag);
-   } while (flag);
+
+   //int flag = 1;
+   //do {
+   //   flag = 0;
+   //   splixt_plane_construct<<< grid, threads >>>(d_g, &flag);
+   //} while (flag);
 
    // check if kernel execution generated and error
    cutilCheckMsg("Kernel execution failed");
 
    // copy result from device to host
-   //cutilSafeCall(cudaMemcpy(img.data, d_g->out_img, mem_size, cudaMemcpyDeviceToHost));
+   cutilSafeCall(cudaMemcpy(img.data, h_g.out_img, mem_size, cudaMemcpyDeviceToHost));
 
    // stop and destroy timer
    cutilCheckError(cutStopTimer(timer));
