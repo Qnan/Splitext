@@ -103,9 +103,11 @@ void runSplitText(int argc, char** argv)
       cutilCheckMsg("Kernel 'init' execution failed");
 
       while (true) {
-         flag = false;
-         cust_cca_d_scan<<< cca_grid, cca_threads >>>(d_bp, w, h, d_ll, d_ref, &flag);
+         flag = 0;
+         cutilSafeCall(cudaMemcpy(d_flag, &flag, sizeof(int), cudaMemcpyHostToDevice));
+         cust_cca_d_scan<<< cca_grid, cca_threads >>>(d_bp, w, h, d_ll, d_ref, d_flag);
          cutilCheckMsg("Kernel 'scan' execution failed");
+         cutilSafeCall(cudaMemcpy(&flag, d_flag, sizeof(int), cudaMemcpyDeviceToHost));
          if (!flag)
             break;
          cust_cca_d_resolve<<< cca_grid, cca_threads >>>(d_bp, w, h, d_ll, d_ref);
