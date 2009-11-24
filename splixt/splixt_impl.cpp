@@ -17,121 +17,114 @@ void runSplitText(int argc, char** argv)
    else
       cudaSetDevice( cutGetMaxGflopsDeviceId() );
 
+   // load image
    Image img;
    image_load(&img, "../img/test.raw");
    //image_load(&img, "../img/test_big.raw");
-
-   // allocate host memory for matrices A and B
-   unsigned int img_size = img.width * img.height;
-   unsigned int mem_size = sizeof(int) * img_size;
+   int w = img.width, h = img.height;
+   unsigned int mem_size = sizeof(int) * w * h;
    
    // allocate device memory
-   Global *d_g, h_g;
-   int *d_ll, *d_ref;
-   cutilSafeCall(cudaMalloc((void**) &d_g, sizeof(Global)));
-   h_g.nx = img.width / REG_SIZE;
-   h_g.ny = img.height / REG_SIZE;
-   h_g.w = img.width;
-   h_g.h = img.height;
-
-   cutilSafeCall(cudaMalloc((void**) &h_g.img, mem_size));
-   cutilSafeCall(cudaMemcpy(h_g.img, img.data, mem_size, cudaMemcpyHostToDevice));
-   cutilSafeCall(cudaMalloc((void**) &h_g.out_img, mem_size));
-   cutilSafeCall(cudaMalloc((void**) &h_g.bp, mem_size));   
-   cutilSafeCall(cudaMalloc((void**) &d_ll, mem_size));   
-   cutilSafeCall(cudaMalloc((void**) &d_ref, mem_size));   
-   cutilSafeCall(cudaMalloc((void**) &h_g.rr, h_g.nx * sizeof(Region) * h_g.ny));
-   cutilSafeCall(cudaMalloc((void**) &h_g.pp, MAX_PLANES * sizeof(Plane)));
-
-   Mountine *d_mnt, h_mnt;
-   h_mnt.rx = h_mnt.ry = h_mnt.lid = -1;
-   h_mnt.lock = 0;
-   h_mnt.mountine = h_mnt.avg = 0.0f;
-
-   cutilSafeCall(cudaMalloc((void**) &d_mnt, MAX_MNT * sizeof(Mountine)));
+   int *d_img;
+   cutilSafeCall(cudaMalloc((void**) &d_img, mem_size));
+   cutilSafeCall(cudaMemcpy(d_img, img.data, mem_size, cudaMemcpyHostToDevice));
 
    // create and start timer
    unsigned int timer = 0;
    cutilCheckError(cutCreateTimer(&timer));
    cutilCheckError(cutStartTimer(timer));
 
-   cutilSafeCall(cudaMemcpy(d_g, &h_g, sizeof(Global), cudaMemcpyHostToDevice));
    // setup execution parameters
-   dim3 threads(BLOCK_SIZE, BLOCK_SIZE);
-   dim3 grid((h_g.nx + BLOCK_SIZE - 1) / BLOCK_SIZE, (h_g.ny + BLOCK_SIZE - 1) / BLOCK_SIZE);
-
-   // clear output image
-   splixt_img_clear<<< grid, threads >>>(d_g, h_g.out_img);   
+   int nx = w / REG_SIZE;
+   int ny = h / REG_SIZE;
+   dim3 reg_threads(BLOCK_SIZE, BLOCK_SIZE);
+   dim3 reg_grid((nx + BLOCK_SIZE - 1) / BLOCK_SIZE, (ny + BLOCK_SIZE - 1) / BLOCK_SIZE);
 
    // split regions into layers   
-   splixt_region_split<<< grid, threads >>>(d_g);
+   Region* d_rr;
+   int *d_ll, *d_ref, *d_bp;
+   Mountine *d_mnt, h_mnt, h_mnt_ret;
+   h_mnt.rx = h_mnt.ry = h_mnt.lid = -1;
+   h_mnt.lock = 0;
+   h_mnt.mountine = h_mnt.avg = 0.0f;
+   Plane* d_pp;
+   int pc;
+   int *d_flag, flag;
+   cutilSafeCall(cudaMalloc((void**) &d_mnt, MAX_MNT * sizeof(Mountine)));
+   cutilSafeCall(cudaMalloc((void**) &d_bp, mem_size));   
+   cutilSafeCall(cudaMalloc((void**) &d_ll, mem_size));   
+   cutilSafeCall(cudaMalloc((void**) &d_ref, mem_size));   
+   cutilSafeCall(cudaMalloc((void**) &d_rr, nx * sizeof(Region) * ny));
+   cutilSafeCall(cudaMalloc((void**) &d_pp, MAX_PLANES * sizeof(Plane)));
+   cutilSafeCall(cudaMalloc((void**) &d_flag, sizeof(int)));
 
-   // find seeding layers
+   // split
+   splixt_region_split<<< reg_grid, reg_threads >>>(d_rr, nx, ny, d_img, w);
+   cutilCheckMsg("Kernel execution failed");
+
+   // seed
    float first_mnt, last_mnt;
    int i;
    for (i = 0; i < MAX_MNT; ++i)
    {  
-      cutilSafeCall(cudaMemcpy(&d_mnt[i], &h_mnt, sizeof(Mountine), cudaMemcpyHostToDevice));
+      cutilSafeCall(cudaMemcpy(d_mnt + i, &h_mnt, sizeof(Mountine), cudaMemcpyHostToDevice));
       if (i == 0)
       {
-         splixt_calc_mountine_initial<<< grid, threads >>>(d_g, &d_mnt[0]);
-         cutilSafeCall(cudaMemcpy(&first_mnt, &d_mnt[0].mountine, sizeof(float), cudaMemcpyDeviceToHost));
+         splixt_calc_mountine_initial<<< reg_grid, reg_threads >>>(d_rr, nx, ny, d_mnt);
+         cutilCheckMsg("Kernel execution failed");
+         cutilSafeCall(cudaMemcpy(&h_mnt_ret, d_mnt, sizeof(Mountine), cudaMemcpyDeviceToHost));
+         first_mnt = h_mnt_ret.mountine;
       }
       else                                                                 
       {
-         splixt_calc_mountine_update<<< grid, threads >>>(d_g, &d_mnt[i], &d_mnt[i - 1]);
-         cutilSafeCall(cudaMemcpy(&last_mnt, &d_mnt[i].mountine, sizeof(float), cudaMemcpyDeviceToHost));
+         splixt_calc_mountine_update<<< reg_grid, reg_threads >>>(d_rr, nx, ny, d_mnt + i, d_mnt + i - 1);
+         cutilCheckMsg("Kernel execution failed");
+         cutilSafeCall(cudaMemcpy(&h_mnt_ret, d_mnt + i, sizeof(Mountine), cudaMemcpyDeviceToHost));
+         last_mnt = h_mnt_ret.mountine;
          if (last_mnt < first_mnt * mountine_ratio_treshold)
             break;
       }
    }
-   int nseeds = i, nplanes = i;
-   splixt_planes_init<<< nseeds, 1 >>>(d_g, d_mnt); 
+   pc = i;
+
+   // init planes
+   splixt_planes_init<<< pc, 1 >>>(d_rr, nx, ny, d_pp, d_mnt); 
+   cutilCheckMsg("Kernel execution failed");
 
    // extend planes
-   int flag = 1;
    do {
       flag = 0;
-      splixt_plane_construct<<< grid, threads >>>(d_g, &flag);
+      cutilSafeCall(cudaMemcpy(d_flag, &flag, sizeof(int), cudaMemcpyHostToDevice));
+      splixt_plane_construct<<< reg_grid, reg_threads >>>(d_rr, nx, ny, d_pp, d_flag);
+      cutilCheckMsg("Kernel execution failed");
+      cutilSafeCall(cudaMemcpy(&flag, d_flag, sizeof(int), cudaMemcpyDeviceToHost));
    } while (flag);
 
-   //splixt_seed_show<<< grid, threads >>>(d_g, d_mnt, nseeds);   
-
-   int *d_img = h_g.bp;
-   int w = h_g.w;
-   int h = h_g.h;
+   // binarize and search for text
    dim3 cca_threads(BLOCK_SIZE, BLOCK_SIZE);
    dim3 cca_grid(w / BLOCK_SIZE, h / BLOCK_SIZE);
-   for (i = 0; i < nplanes; ++i)
+   for (i = 0; i < pc; ++i)
    {
-      splixt_binarize<<< grid, threads >>>(d_g, i);
-      cutilSafeCall(cudaMemcpy(img.data, d_img, mem_size, cudaMemcpyDeviceToHost));
-      image_save("../img/frag/bp.raw", &img);
-      cust_cca_d_init<<< cca_grid, cca_threads >>>(d_img, w, h, d_ll, d_ref);
+      splixt_binarize<<< reg_grid, reg_threads >>>(d_bp, d_img, w, d_rr, nx, ny, d_pp, i);
+      cutilCheckMsg("Kernel execution failed");
+      cust_cca_d_init<<< cca_grid, cca_threads >>>(d_bp, w, h, d_ll, d_ref);
       cutilCheckMsg("Kernel 'init' execution failed");
 
       while (true) {
          flag = false;
-         cust_cca_d_scan<<< cca_grid, cca_threads >>>(d_img, w, h, d_ll, d_ref, &flag);
+         cust_cca_d_scan<<< cca_grid, cca_threads >>>(d_bp, w, h, d_ll, d_ref, &flag);
          cutilCheckMsg("Kernel 'scan' execution failed");
          if (!flag)
             break;
-         cust_cca_d_resolve<<< cca_grid, cca_threads >>>(d_img, w, h, d_ll, d_ref);
+         cust_cca_d_resolve<<< cca_grid, cca_threads >>>(d_bp, w, h, d_ll, d_ref);
          cutilCheckMsg("Kernel 'resolve' execution failed");
-         cust_cca_d_relabel<<< cca_grid, cca_threads >>>(d_img, w, h, d_ll, d_ref);
+         cust_cca_d_relabel<<< cca_grid, cca_threads >>>(d_bp, w, h, d_ll, d_ref);
          cutilCheckMsg("Kernel 'relabel' execution failed");
       }
-      cust_cca_d_display<<< cca_grid, cca_threads >>>(d_img, w, h, d_ll);
+      cust_cca_d_display<<< cca_grid, cca_threads >>>(d_bp, w, h, d_ll);
+      cutilCheckMsg("Kernel execution failed");
       break;
    }
-
-   splixt_plane_show<<< grid, threads >>>(d_g, nseeds);   
-             
-   // check if kernel execution generated and error
-   cutilCheckMsg("Kernel execution failed");
-
-   // copy result from device to host
-   cutilSafeCall(cudaMemcpy(img.data, d_img, mem_size, cudaMemcpyDeviceToHost));
 
    // stop and destroy timer
    cutilCheckError(cutStopTimer(timer));
@@ -139,15 +132,20 @@ void runSplitText(int argc, char** argv)
    cutilCheckError(cutDeleteTimer(timer));
 
    // save result
+   splixt_plane_show<<< reg_grid, reg_threads >>>(d_bp, d_img, w, d_rr, nx, ny, d_pp, pc);   
+   cutilCheckMsg("Kernel execution failed");
+   cutilSafeCall(cudaMemcpy(img.data, d_bp, mem_size, cudaMemcpyDeviceToHost));
    image_save("../img/frag/out.raw", &img);
   
    // clean up memory
    image_dispose(&img);
-   cutilSafeCall(cudaFree(h_g.img));
-   cutilSafeCall(cudaFree(h_g.out_img));
-   cutilSafeCall(cudaFree(h_g.rr));
-   cutilSafeCall(cudaFree(h_g.pp));
-   cutilSafeCall(cudaFree(d_g));
+   cutilSafeCall(cudaFree(d_mnt));
+   cutilSafeCall(cudaFree(d_bp));
+   cutilSafeCall(cudaFree(d_ll));
+   cutilSafeCall(cudaFree(d_ref));
+   cutilSafeCall(cudaFree(d_rr)); 
+   cutilSafeCall(cudaFree(d_pp));
+   cutilSafeCall(cudaFree(d_flag));
 
    cudaThreadExit();
 }
