@@ -40,7 +40,9 @@ void runSplitText(int argc, char** argv)
    Plane* d_pp;
    int pc;
    int *d_flag, flag;
+   unsigned int *d_cnt;
    int *d_img;
+   ConComp *d_cc;
    int i;
    cutilSafeCall(cudaMalloc((void**) &d_img, mem_size));
    cutilSafeCall(cudaMalloc((void**) &d_mnt, MAX_MNT * sizeof(Mountine)));
@@ -50,7 +52,9 @@ void runSplitText(int argc, char** argv)
    cutilSafeCall(cudaMalloc((void**) &d_rr, nx * sizeof(Region) * ny));
    cutilSafeCall(cudaMalloc((void**) &d_pp, MAX_PLANES * sizeof(Plane)));
    cutilSafeCall(cudaMalloc((void**) &d_flag, sizeof(int)));
-
+   cutilSafeCall(cudaMalloc((void**) &d_cnt, sizeof(unsigned int)));
+   cutilSafeCall(cudaMalloc((void**) &d_cc, MAX_CC * sizeof(ConComp)));
+   
    cutilSafeCall(cudaMemcpy(d_img, img.data, mem_size, cudaMemcpyHostToDevice));
 
    // create and start timer
@@ -95,6 +99,7 @@ void runSplitText(int argc, char** argv)
    // binarize and search for text
    dim3 cca_threads(BLOCK_SIZE, BLOCK_SIZE);
    dim3 cca_grid(w / BLOCK_SIZE, h / BLOCK_SIZE);
+   unsigned int ncc = 0;
    for (i = 0; i < pc; ++i)
    {
       splixt_binarize<<< reg_grid, reg_threads >>>(d_bp, d_img, w, d_rr, nx, ny, d_pp, i);
@@ -114,7 +119,27 @@ void runSplitText(int argc, char** argv)
          cutilCheckMsg("Kernel 'resolve' execution failed");
          cust_cca_d_relabel<<< cca_grid, cca_threads >>>(d_bp, w, h, d_ll, d_ref);
          cutilCheckMsg("Kernel 'relabel' execution failed");
-      }      \
+      }      
+      ncc = 0;
+      cutilSafeCall(cudaMemcpy(d_cnt, &ncc, sizeof(int), cudaMemcpyHostToDevice));
+      cust_cca_collect_labels<<< cca_grid, cca_threads >>>(d_bp, w, h, d_ll, d_ref, d_cnt);
+      cutilCheckMsg("Kernel execution failed");
+      cutilSafeCall(cudaMemcpy(&ncc, d_cnt, sizeof(int), cudaMemcpyDeviceToHost));
+      if (ncc > MAX_CC)
+      {
+         printf("Number of connected components exceeds the maximum allowed number! Truncated!");
+         ncc = MAX_CC;
+      }
+
+      cust_cca_d_relabel_1<<< cca_grid, cca_threads >>>(d_bp, w, h, d_ll, d_ref);
+      cutilCheckMsg("Kernel execution failed");
+
+      cust_cca_label_clear<<< (ncc + LIN_BLOCK_SIZE - 1) / LIN_BLOCK_SIZE, LIN_BLOCK_SIZE >>>(d_cc, ncc, w, h);
+      cutilCheckMsg("Kernel execution failed");
+
+      cust_cca_labels_calc_props<<< cca_grid, cca_threads >>>(d_bp, w, h, d_ll, d_cc);
+      cutilCheckMsg("Kernel execution failed");
+
       cust_cca_d_display<<< cca_grid, cca_threads >>>(d_bp, w, h, d_ll);
       cutilCheckMsg("Kernel execution failed");
       break;
@@ -126,8 +151,8 @@ void runSplitText(int argc, char** argv)
    cutilCheckError(cutDeleteTimer(timer));
 
    // save result
-   splixt_plane_show<<< reg_grid, reg_threads >>>(d_bp, d_img, w, d_rr, nx, ny, d_pp, pc);   
-   cutilCheckMsg("Kernel execution failed");
+   //splixt_plane_show<<< reg_grid, reg_threads >>>(d_bp, d_img, w, d_rr, nx, ny, d_pp, pc);   
+   //cutilCheckMsg("Kernel execution failed");
    cutilSafeCall(cudaMemcpy(img.data, d_bp, mem_size, cudaMemcpyDeviceToHost));
    image_save("../img/frag/out.raw", &img);
   
@@ -140,6 +165,7 @@ void runSplitText(int argc, char** argv)
    cutilSafeCall(cudaFree(d_rr)); 
    cutilSafeCall(cudaFree(d_pp));
    cutilSafeCall(cudaFree(d_flag));
+   cutilSafeCall(cudaFree(d_cnt));
 
    cudaThreadExit();
 }

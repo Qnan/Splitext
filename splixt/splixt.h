@@ -14,11 +14,13 @@
 
 // Thread block size
 #define BLOCK_SIZE 4
+#define LIN_BLOCK_SIZE 32
 #define MAX_LAYERS 16
 #define MAX_PLANES 256
 #define MAX_HIST 256
 #define MAX_MNT 256
 #define REG_SIZE 128
+#define MAX_CC 1024
 #define REG_SIZE_SQ (REG_SIZE*REG_SIZE)
 
 #define separability_treshold 0.9f
@@ -66,6 +68,12 @@ typedef struct tagPlane{
 	long long v2;
    int lock;
 }Plane;
+
+typedef struct tagConComp{
+   int x0, x1, y0, y1;
+   int tx, ty;
+	int np;
+}ConComp;
 
 #endif // _splixt_H_
 
