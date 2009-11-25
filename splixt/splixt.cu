@@ -3,7 +3,7 @@
 
 int main(int argc, char** argv)
 {
-	runSplitText(argc, argv);
+	 runSplitText(argc, argv);
     //runCCA(argc, argv);
     cutilExit(argc, argv);
 }

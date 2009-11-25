@@ -244,7 +244,7 @@ __global__ void splixt_calc_mountine_update (Region* rr, int nx, int ny, Mountin
    for (j = 0; j < r->layer_count; ++j)
    {
       layer = r->layers + j;
-      layer->mountine -= mold->mountine * expf(-fabs(mold->avg - layer->avg));
+      layer->mountine -= mold->mountine * expf(-0.5f * fabs(mold->avg - layer->avg));
       if (layer->mountine > max)
       {
          max = layer->mountine;
@@ -297,10 +297,10 @@ __global__ void splixt_planes_init (Region* rr, int nx, int ny, Plane* pp, Mount
 
 __global__ void splixt_plane_construct (Region* rr, int nx, int ny, Plane* pp, int *flag)
 {
-   Region *r, *r2;
+   Region *r, *r2, *ra, *rb;
    Layer *l, *l2;
    Plane *p;
-   int rx, ry, j, i, k, q0;
+   int rx, ry, j, i, k, q0, dx, dy, xa, xb, ya, yb;
    float min = 0, diff, sigma, single;
    int nei[4], neicnt = 0;
 
@@ -335,6 +335,12 @@ __global__ void splixt_plane_construct (Region* rr, int nx, int ny, Plane* pp, i
             l2 = r2->layers + k;
             if (l2->q < 0)
                continue; // skip unassigned neighbors
+            //if (r2->rx == r->rx)
+            //{
+            //   dx = 0;
+            //   dy = 1;
+            //   x0 = 
+            //}
             diff = fabs(l->avg - l2->avg);
             sigma = sqrtf(l2->stddev);
             if (q0 < 0 || diff < min)

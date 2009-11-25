@@ -13,7 +13,7 @@
 #define _splixt_H_
 
 // Thread block size
-#define BLOCK_SIZE 4
+#define BLOCK_SIZE 16
 #define LIN_BLOCK_SIZE 32
 #define MAX_LAYERS 16
 #define MAX_PLANES 256
@@ -21,6 +21,7 @@
 #define MAX_MNT 256
 #define REG_SIZE 128
 #define MAX_CC 1024
+#define MAX_GG 512
 #define REG_SIZE_SQ (REG_SIZE*REG_SIZE)
 
 #define separability_treshold 0.9f
@@ -73,7 +74,16 @@ typedef struct tagConComp{
    int x0, x1, y0, y1;
    int tx, ty;
 	int np;
+   int g;
 }ConComp;
+
+typedef struct tagConSet{
+   int x0, x1, y0, y1;
+   int ncc;
+   int acc;
+	int nop;
+   int is_text;
+}ConSet;
 
 #endif // _splixt_H_
 
