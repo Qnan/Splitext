@@ -201,10 +201,12 @@ __global__ void cust_cca_show_cc (int *img, int width, int height, ConComp *cc, 
    int y = blockDim.y * blockIdx.y + threadIdx.y;   
    int xc, yc, i;
    int id = y * width + x;
-   if (x >= width || y >= height)
+   if (x >= width || y >= height || ll[id] < 0)
       return;   
    if (cc[ll[id]].g > 0)
-      img[id] = 150; 
+      img[id] = 100; 
+   else
+      img[id] = 0xFF;
 }
 
 __global__ void cust_xy_project_y (ConComp* cc, int ncc, int* accu)
@@ -347,19 +349,29 @@ __global__ void cust_cs_clear (ConSet* css, int ncs, int width, int height)
    cs->acc = 0;
 }
 
-__global__ void cust_cca_show_cs (int *img, int width, int height, ConComp* cc, ConSet *css, int* ll)
+__global__ void cust_cca_show_cs (int *img, int width, int height, ConComp* cc, ConSet *css, int* ll, int ncs)
 {
    int x = blockDim.x * blockIdx.x + threadIdx.x;
    int y = blockDim.y * blockIdx.y + threadIdx.y;   
-   int label, g;
+   int label, g, i, incs = 0;
    ConSet *cs;
    int id = y * width + x;
    if (x >= width || y >= height || ll[id] < 0)
       return; 
+   for (i = 0; i < ncs; ++i)
+      if (x >= css[i].x0 && x <= css[i].x1 && y >= css[i].y0 && y <= css[i].y1)
+         incs = 1;
    label = ll[id];
    g = cc[label].g;
+   //if (incs)
+   //   img[id] = 255; //170;
+   //else
+   //   img[id] = 255;
    if (g >= 0 && g < MAX_CC && css[g].is_text)
-      img[id] = 0;
+      if (incs)
+         img[id] = 100;
+      //else
+      //   img[id] = 0;
 }
 
 __global__ void cust_cca_cs_is_text (ConSet *css, int ncs, int* img, int width, int height)

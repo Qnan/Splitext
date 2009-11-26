@@ -20,7 +20,7 @@
 #define MAX_HIST 256
 #define MAX_MNT 256
 #define REG_SIZE 128
-#define MAX_CC 1024
+#define MAX_CC 16384
 #define MAX_GG 512
 #define REG_SIZE_SQ (REG_SIZE*REG_SIZE)
 

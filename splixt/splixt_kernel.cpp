@@ -23,6 +23,18 @@ __global__ void splixt_treshold (int *img, int width, int height, int t)
          img[dy + x] = img[dy + x] < t ? 0 : 255;
 }
 
+__global__ void splixt2_calc_hist (int* histogram, int *img, int width, int height)
+{  
+   int x, y;
+
+   x = blockIdx.x * blockDim.x + threadIdx.x;
+   y = blockIdx.y * blockDim.y + threadIdx.y;
+   if (x >= width || y >= height)
+      return;
+
+   atomicAdd(&histogram[img[y * width + x]], 1);
+}
+
 __global__ void splixt_region_split (Region* rr, int nx, int ny, int *img, int width)
 {  
    Region *r;
@@ -194,7 +206,7 @@ __global__ void splixt_calc_mountine_initial (Region* rr, int nx, int ny, Mounti
          for (x = 0; x < nx; ++x) {
             r2 = rr + y * nx + x;
             for (i = 0; i < r2->layer_count; ++i) {
-               mountine += expf(-2 * fabs(r2->layers[i].avg - layer->avg));
+               mountine += expf(-3 * fabs(r2->layers[i].avg - layer->avg));
             }
          }
       }
@@ -244,7 +256,7 @@ __global__ void splixt_calc_mountine_update (Region* rr, int nx, int ny, Mountin
    for (j = 0; j < r->layer_count; ++j)
    {
       layer = r->layers + j;
-      layer->mountine -= mold->mountine * expf(-0.5f * fabs(mold->avg - layer->avg));
+      layer->mountine -= mold->mountine * expf(-0.4f * fabs(mold->avg - layer->avg));
       if (layer->mountine > max)
       {
          max = layer->mountine;
@@ -295,13 +307,15 @@ __global__ void splixt_planes_init (Region* rr, int nx, int ny, Plane* pp, Mount
    p->v0 += 1;
 }  
 
-__global__ void splixt_plane_construct (Region* rr, int nx, int ny, Plane* pp, int *flag)
+__global__ void splixt_plane_construct (Region* rr, int nx, int ny, Plane* pp, int *flag, int* img, int width)
 {
    Region *r, *r2, *ra, *rb;
    Layer *l, *l2;
    Plane *p;
-   int rx, ry, j, i, k, q0, dx, dy, xa, xb, ya, yb;
-   float min = 0, diff, sigma, single;
+   int rx, ry, j, i, k, q0, dx, dy, 
+      xa, xb, ya, yb, s, la, lb, va, vb, n2,
+      ta0, ta1, tb0, tb1;
+   float min = 0, diff, diff2, sigma, single;
    int nei[4], neicnt = 0;
 
    rx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -335,13 +349,79 @@ __global__ void splixt_plane_construct (Region* rr, int nx, int ny, Plane* pp, i
             l2 = r2->layers + k;
             if (l2->q < 0)
                continue; // skip unassigned neighbors
-            //if (r2->rx == r->rx)
-            //{
-            //   dx = 0;
-            //   dy = 1;
-            //   x0 = 
-            //}
+
+            if (r2->rx == r->rx)
+            {
+               dx = 1;
+               dy = 0;
+               xa = xb = r->rx * REG_SIZE;
+               if (r2->ry > r->ry)
+               {
+                  ra = r;
+                  rb = r2;
+                  la = j;
+                  lb = k;
+                  ya = r2->ry * REG_SIZE - 1;
+                  yb = r2->ry * REG_SIZE;
+               }
+               else
+               {
+                  ra = r2;
+                  rb = r;
+                  la = k;
+                  lb = j;
+                  ya = r->ry * REG_SIZE;
+                  yb = r->ry * REG_SIZE - 1;
+               }
+            }
+            else
+            {
+               dx = 0;
+               dy = 1;
+               ya = yb = r->ry * REG_SIZE;
+               if (r2->rx > r->rx)
+               {
+                  ra = r;
+                  rb = r2;
+                  la = j;
+                  lb = k;
+                  xa = r2->rx * REG_SIZE - 1;
+                  xb = r2->rx * REG_SIZE;
+               }
+               else
+               {
+                  ra = r2;
+                  rb = r;
+                  la = k;
+                  lb = j;
+                  xa = r->rx * REG_SIZE;
+                  xb = r->rx * REG_SIZE - 1;
+               }
+            }
+            ta0 = ra->layers[la].t;
+            ta1 = la < ra->layer_count - 1 ? ra->layers[la + 1].t : MAX_HIST;
+            tb0 = rb->layers[lb].t;
+            tb1 = lb < rb->layer_count - 1 ? rb->layers[lb + 1].t : MAX_HIST;
+            diff2 = 0;
+            n2 = 0;
+            for (s = 0; s < REG_SIZE; ++s, xa += dx, xb += dx, ya += dy, yb += dy)
+            {  
+               va = img[ya * width + xa];
+               vb = img[yb * width + xb];
+               if (va >= ta0 && va < ta1 && vb >= tb0 && vb < tb1)
+               {
+                  diff2 += abs(va - vb);
+                  n2++;
+               }
+            }          
+            if (n2 > 0)
+               diff2 /= n2;
+            else
+               diff2 = 255;            
+
             diff = fabs(l->avg - l2->avg);
+            if (diff < diff2)
+               diff = diff2;
             sigma = sqrtf(l2->stddev);
             if (q0 < 0 || diff < min)
             {
@@ -358,7 +438,7 @@ __global__ void splixt_plane_construct (Region* rr, int nx, int ny, Plane* pp, i
          if (sigma < 1) sigma = 1;
          single = min / sigma;
 
-         if (single < 1.0)
+         if (single < 1.5)
          {  
             l->q = q0;
             r->pln_dst[q0] = 0;
