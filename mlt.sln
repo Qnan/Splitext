@@ -11,6 +11,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "png2ggg", "png2ggg\png2ggg.
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ggg2png", "ggg2png\ggg2png.csproj", "{9B6BA9CD-4889-4641-84D9-785AB1F6E5E0}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "crop", "crop\crop.csproj", "{BAFFE3B2-746F-4653-A5E4-4F0CEBF72CB8}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -51,6 +53,16 @@ Global
 		{9B6BA9CD-4889-4641-84D9-785AB1F6E5E0}.Release|Mixed Platforms.ActiveCfg = Release|Any CPU
 		{9B6BA9CD-4889-4641-84D9-785AB1F6E5E0}.Release|Mixed Platforms.Build.0 = Release|Any CPU
 		{9B6BA9CD-4889-4641-84D9-785AB1F6E5E0}.Release|Win32.ActiveCfg = Release|Any CPU
+		{BAFFE3B2-746F-4653-A5E4-4F0CEBF72CB8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{BAFFE3B2-746F-4653-A5E4-4F0CEBF72CB8}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{BAFFE3B2-746F-4653-A5E4-4F0CEBF72CB8}.Debug|Mixed Platforms.ActiveCfg = Debug|Any CPU
+		{BAFFE3B2-746F-4653-A5E4-4F0CEBF72CB8}.Debug|Mixed Platforms.Build.0 = Debug|Any CPU
+		{BAFFE3B2-746F-4653-A5E4-4F0CEBF72CB8}.Debug|Win32.ActiveCfg = Debug|Any CPU
+		{BAFFE3B2-746F-4653-A5E4-4F0CEBF72CB8}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{BAFFE3B2-746F-4653-A5E4-4F0CEBF72CB8}.Release|Any CPU.Build.0 = Release|Any CPU
+		{BAFFE3B2-746F-4653-A5E4-4F0CEBF72CB8}.Release|Mixed Platforms.ActiveCfg = Release|Any CPU
+		{BAFFE3B2-746F-4653-A5E4-4F0CEBF72CB8}.Release|Mixed Platforms.Build.0 = Release|Any CPU
+		{BAFFE3B2-746F-4653-A5E4-4F0CEBF72CB8}.Release|Win32.ActiveCfg = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

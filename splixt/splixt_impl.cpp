@@ -210,7 +210,7 @@ void runSplitText(int argc, char** argv)
    // load image
    Image img;
    //image_load(&img, "../img/inn2.raw");
-   //image_load(&img, "../img/test.raw");
+   image_load(&img, "../img/test.raw");
    //image_load(&img, "../img/testch.raw");
    //image_load(&img, "../img/test_big.raw");
    //image_load(&img, "../img/diehard.raw");
@@ -220,7 +220,7 @@ void runSplitText(int argc, char** argv)
    //image_load(&img, "../img/obj.raw");
    //image_load(&img, "../img/ua.raw");
    //image_load(&img, "../img/small.raw");
-   image_load(&img, "../img/vis.raw");
+   //image_load(&img, "../img/vis.raw");
    int w = img.width, h = img.height;
    unsigned int mem_size = sizeof(int) * w * h;
 
@@ -295,16 +295,16 @@ void runSplitText(int argc, char** argv)
             else
                limg.data[y * w + x] = 0xFF;
 
-      //sprintf(buf, "../img/frag/ll_%02i.raw", i);
-      //image_save(buf, &limg);
+      sprintf(buf, "../img/frag/ll_%02i.raw", i);
+      image_save(buf, &limg);
 
       for (y = 0; y < h; ++y)
          for (x = 0; x < w; ++x)
             if (limg.data[y * w + x] != 0xFF)
                limg.data[y * w + x] = 0;
 
-      //sprintf(buf, "../img/frag/bb_%02i.raw", i);
-      //image_save(buf, &limg);
+      sprintf(buf, "../img/frag/bb_%02i.raw", i);
+      image_save(buf, &limg);
 
       cudaMemcpy(d_bp, limg.data, mem_size, cudaMemcpyHostToDevice);
 
@@ -363,10 +363,10 @@ void runSplitText(int argc, char** argv)
          ncs = MAX_GG; // too many CS
       cust_xy_assign_x<<< cc_blocks, LIN_BLOCK_SIZE >>>(d_cc, ncc, d_accu, w);
 
-      //cust_cca_show_cc<<< cca_grid, cca_threads >>>(d_out, w, h, d_cc, ncc, d_ll);
-      //sprintf(buf, "../img/frag/pre_%02i.raw", i);
-      //cudaMemcpy(limg.data, d_out, mem_size, cudaMemcpyDeviceToHost);
-      //image_save(buf, &limg);
+      cust_cca_show_cc<<< cca_grid, cca_threads >>>(d_out, w, h, d_cc, ncc, d_ll);
+      sprintf(buf, "../img/frag/pre_%02i.raw", i);
+      cudaMemcpy(limg.data, d_out, mem_size, cudaMemcpyDeviceToHost);
+      image_save(buf, &limg);
 
       int cs_blocks = (ncs + LIN_BLOCK_SIZE - 1) / LIN_BLOCK_SIZE;
       cust_cs_clear<<< cs_blocks, LIN_BLOCK_SIZE >>>(d_gg, ncs, w, h);
@@ -376,12 +376,12 @@ void runSplitText(int argc, char** argv)
       cust_cca_show_cs<<< cca_grid, cca_threads >>>(d_out, w, h, d_cc, d_gg, d_ll, ncs);
       //////////////////////////////////////////////////////////
 
-      //sprintf(buf, "../img/frag/out_%02i.raw", i);
-      //cudaMemcpy(limg.data, d_out, mem_size, cudaMemcpyDeviceToHost);
-      //image_save(buf, &limg);
+      sprintf(buf, "../img/frag/out_%02i.raw", i);
+      cudaMemcpy(limg.data, d_out, mem_size, cudaMemcpyDeviceToHost);
+      image_save(buf, &limg);
    }
-   cudaMemcpy(limg.data, d_out, mem_size, cudaMemcpyDeviceToHost);
-   image_save("../img/frag/out.raw", &limg);
+   //cudaMemcpy(limg.data, d_out, mem_size, cudaMemcpyDeviceToHost);
+   //image_save("../img/frag/out.raw", &limg);
    return;
 
    // create and start timer
